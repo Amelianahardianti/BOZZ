@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Menyimpan access_token/refresh_token hasil Shopee Seller Authorization (Step 2 design).
+model ShopeeToken {
+  id           Int      @id @default(autoincrement())
+  shopId       String   @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  updatedAt    DateTime @updatedAt
+}
+
+// Field diambil dari response get_order_list & get_order_detail (dikonfirmasi Step 1),
+// diperluas untuk unified order multi-marketplace (MVP vertical slice).
+model Order {
+  id              Int      @id @default(autoincrement())
+  orderSn         String   @unique
+  orderStatus     String
+  region          String?
+  currency        String?
+  totalAmount     Float?
+  buyerUsername   String?
+  orderCreateTime Int?
+  orderUpdateTime Int?
+  payTime         Int?
+
+  // SHOPEE | TOKOPEDIA | OFFLINE — wajib diisi eksplisit oleh setiap caller (tidak ada
+  // default), supaya tidak ada asumsi diam-diam "semua order = Shopee".
+  marketplace String
+
+  // PENDING | PACKING | PACKED — alur fulfillment internal, terpisah dari orderStatus Shopee.
+  fulfillmentStatus String @default("PENDING")
+
+  items     OrderItem[]
+  syncedAt  DateTime    @updatedAt
+  createdAt DateTime    @default(now())
+}
+
+model OrderItem {
+  id    Int   @id @default(autoincrement())
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId Int
+
+  itemId                 String
+  itemName               String
+  itemSku                String?
+  modelId                String?
+  modelSku               String?
+  modelQuantityPurchased Int
+  modelOriginalPrice     Float?
+  modelDiscountedPrice   Float?
+  orderItemId            String?
+
+  @@unique([orderId, itemId, modelId, orderItemId])
+}
