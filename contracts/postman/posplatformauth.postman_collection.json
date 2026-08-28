@@ -1,0 +1,464 @@
+{
+  "info": {
+    "name": "POS PWA - Auth Module (auth-product)",
+    "description": "Uji coba semua endpoint modul Auth: login, me, logout, staff CRUD, dan RBAC. Urutan folder sengaja dari atas ke bawah -- token owner ke-capture otomatis dari request Login, jadi jalankan berurutan dari atas.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api" },
+    { "key": "owner_token", "value": "" },
+    { "key": "kasir_token", "value": "" },
+    { "key": "created_staff_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Login",
+      "item": [
+        {
+          "name": "Login - Owner (harus 200, dapat token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Ada token di response', function () { pm.expect(pm.response.json()).to.have.property('token'); });",
+                  "var body = pm.response.json();",
+                  "pm.collectionVariables.set('owner_token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"owner\",\n  \"password\": \"owner123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Password Salah (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });",
+                  "pm.test('Kode error INVALID_CREDENTIALS', function () { pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"owner\",\n  \"password\": \"password-yang-salah\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Username Tidak Terdaftar (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"tidak-ada-orangnya\",\n  \"password\": \"apapun123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Body Kosong (harus 400, validasi zod)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Kode error VALIDATION_ERROR', function () { pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Me & Logout",
+      "item": [
+        {
+          "name": "Get Me - Pakai Token Owner (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('role = owner', function () { pm.expect(pm.response.json().role).to.eql('owner'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Get Me - TANPA Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Get Me - Token Ngawur (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer token-asal-asalan-123" }],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Logout (harus 204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 204', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Staff Management (harus login sebagai Owner)",
+      "item": [
+        {
+          "name": "Create Staff - Kasir Baru (harus 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('role = kasir', function () { pm.expect(pm.response.json().role).to.eql('kasir'); });",
+                  "var body = pm.response.json();",
+                  "pm.collectionVariables.set('created_staff_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Budi Kasir\",\n  \"username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\",\n  \"phone\": \"08123456789\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        },
+        {
+          "name": "Create Staff - Username Duplikat (harus 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Budi Duplikat\",\n  \"username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        },
+        {
+          "name": "Create Staff - Coba Bikin Role Owner (harus 400, ditolak)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Owner Kedua\",\n  \"username\": \"owner2\",\n  \"password\": \"owner123\",\n  \"role\": \"owner\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        },
+        {
+          "name": "Create Staff - Password Kurang dari 6 Karakter (harus 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Pendek\",\n  \"username\": \"testpendek\",\n  \"password\": \"123\",\n  \"role\": \"kasir\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        },
+        {
+          "name": "List Staff - Sebagai Owner (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Ada data array', function () { pm.expect(pm.response.json().data).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        },
+        {
+          "name": "Update Staff - Ganti Nama (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Nama berubah', function () { pm.expect(pm.response.json().name).to.eql('Budi Kasir Senior'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Budi Kasir Senior\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/staff/{{created_staff_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["staff", "{{created_staff_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Login - Sebagai Kasir Budi (buat tes RBAC di folder 4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.collectionVariables.set('kasir_token', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"budi\",\n  \"password\": \"budi123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Deactivate Staff - Nonaktifkan Budi (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('is_active = false', function () { pm.expect(pm.response.json().is_active).to.eql(false); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/staff/{{created_staff_id}}/deactivate",
+              "host": ["{{base_url}}"],
+              "path": ["staff", "{{created_staff_id}}", "deactivate"]
+            }
+          }
+        },
+        {
+          "name": "Login - Budi Setelah Dinonaktifkan (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 -- akun nonaktif tidak boleh login', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"budi\",\n  \"password\": \"budi123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Uji RBAC (role yang salah harus ditolak)",
+      "item": [
+        {
+          "name": "List Staff - Sebagai Kasir (harus 403, bukan Owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });",
+                  "pm.test('Kode error FORBIDDEN', function () { pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{kasir_token}}" }],
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          },
+          "description": "PENTING: jalankan request 'Login - Sebagai Kasir Budi' di folder 3 DULU sebelum ini, supaya {{kasir_token}} kesimpen. Kalau folder 3 request 'Deactivate Staff' udah dijalanin duluan, token ini otomatis expired/gagal login lagi -- itu wajar, artinya proteksinya jalan benar."
+        },
+        {
+          "name": "Create Staff - Sebagai Kasir (harus 403, bukan Owner)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{kasir_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nyoba Bikin Staff\",\n  \"username\": \"nyoba\",\n  \"password\": \"nyoba123\",\n  \"role\": \"kasir\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
+          }
+        }
+      ]
+    }
+  ]
+}
