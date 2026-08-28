@@ -1,0 +1,42 @@
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+build/
+**/dist/
+
+# Environment variables (JANGAN commit secret/token asli)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS-specific junk
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test/coverage
+coverage/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Misc
+.eslintcache
+EOF
