@@ -1,0 +1,1474 @@
+openapi: 3.0.3
+info:
+  title: POS PWA Multi-Platform API
+  description: >
+    Kontrak API untuk sistem POS PWA Multi-Platform (v2 Flock Stock Track).
+    Ownership final (disepakati tim, per 2026-08-28): Orang A pegang
+    backend/src/modules/sales-inventory (Sales & Inventory + Fulfillment,
+    termasuk laporan penjualan mentah/agregasi transaksi & tickets),
+    Orang B pegang backend/src/modules/ecommerce-sync (Order Hub, adapter
+    platform, & Customer), Orang C pegang backend/src/modules/auth-product
+    (Auth, Finance & Insights) SEKALIGUS seluruh apps/pwa (frontend).
+    Lihat tag tiap endpoint untuk tahu modul/folder pemiliknya.
+    Sumber: SRS v1.0 Bagian 8.3, pos_pwa_db_field_dictionary.xlsx,
+    breakdown arsitektur PM (modular monolith Express).
+  version: "0.2.0-draft"
+servers:
+  - url: /api
+    description: Base path seluruh endpoint (lihat SRS 8.3)
+
+tags:
+  - name: Auth
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: Staff
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: StoreSettings
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: Dashboard
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: Reports
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: Expenses
+    description: "Orang C — backend/src/modules/auth-product (v2)"
+  - name: Notifications
+    description: "Orang C — backend/src/modules/auth-product"
+  - name: Products
+    description: "Orang A — backend/src/modules/sales-inventory"
+  - name: Categories
+    description: "Orang A — backend/src/modules/sales-inventory"
+  - name: Transactions
+    description: "Orang A — backend/src/modules/sales-inventory"
+  - name: Tickets
+    description: "Orang A — backend/src/modules/sales-inventory (fulfillment)"
+  - name: ShoppingList
+    description: "Orang A — backend/src/modules/sales-inventory (v2)"
+  - name: Platforms
+    description: "Orang B — backend/src/modules/ecommerce-sync"
+  - name: Webhooks
+    description: "Orang B — backend/src/modules/ecommerce-sync"
+  - name: Orders
+    description: "Orang B — backend/src/modules/ecommerce-sync"
+  - name: Customers
+    description: "Orang B — backend/src/modules/ecommerce-sync"
+
+security:
+  - bearerAuth: []
+
+paths:
+  # =====================================================================
+  # MODUL AUTH, FINANCE & INSIGHTS (ORANG C)
+  # =====================================================================
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login staf
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email_or_username, password]
+              properties:
+                email_or_username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      responses:
+        "204": { description: Logout berhasil }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Info akun yang sedang login
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /staff:
+    get:
+      tags: [Staff]
+      summary: List akun staf
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUsers"
+    post:
+      tags: [Staff]
+      summary: Tambah akun Kasir/Pengepak
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StaffCreateRequest" }
+      responses:
+        "201":
+          description: Staf dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /staff/{id}:
+    patch:
+      tags: [Staff]
+      summary: Update data/role staf
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StaffUpdateRequest" }
+      responses:
+        "200":
+          description: Staf diupdate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /staff/{id}/deactivate:
+    patch:
+      tags: [Staff]
+      summary: Nonaktifkan akun staf
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Staf dinonaktifkan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /store-settings:
+    get:
+      tags: [StoreSettings]
+      summary: Ambil profil toko
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreSettings" }
+    patch:
+      tags: [StoreSettings]
+      summary: Update profil toko
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StoreSettingsUpdateRequest" }
+      responses:
+        "200":
+          description: Profil toko diupdate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StoreSettings" }
+
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Data ringkasan kartu Dashboard
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardSummary" }
+
+  /reports/sales:
+    get:
+      tags: [Reports]
+      summary: Laporan penjualan (filter tanggal/payment/customer type)
+      parameters:
+        - name: date_from
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: payment_method
+          in: query
+          schema: { type: string, enum: [cash, transfer, ewallet] }
+        - name: customer_type
+          in: query
+          schema: { type: string, enum: [walk_in, marketplace] }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SalesReport" }
+
+  /reports/top-products:
+    get:
+      tags: [Reports]
+      summary: Laporan produk terlaris (qty & revenue)
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TopProductItem" }
+
+  /reports/export:
+    get:
+      tags: [Reports]
+      summary: >
+        Export laporan ke Excel/CSV. Proses berpotensi berat (SRS 9.8) —
+        endpoint ini men-trigger job async dan mengembalikan job_id untuk
+        di-poll statusnya, bukan file langsung.
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+        - name: format
+          in: query
+          schema: { type: string, enum: [xlsx, csv], default: xlsx }
+      responses:
+        "202":
+          description: Job export diterima, sedang diproses async
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string, format: uuid }
+                  status: { type: string, enum: [queued, processing, done, failed] }
+                  download_url:
+                    type: string
+                    nullable: true
+                    description: Terisi kalau status = done
+
+  /reports/financial-summary:
+    get:
+      tags: [Reports]
+      summary: "[v2] Ringkasan laba/rugi (revenue - expenses)"
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revenue: { type: number, format: decimal }
+                  total_expenses: { type: number, format: decimal }
+                  profit: { type: number, format: decimal }
+
+  /expenses:
+    get:
+      tags: [Expenses]
+      summary: "[v2] List pengeluaran"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Expense" }
+    post:
+      tags: [Expenses]
+      summary: "[v2] Tambah pengeluaran"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseCreateRequest" }
+      responses:
+        "201":
+          description: Pengeluaran dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Expense" }
+
+  /expenses/{id}:
+    patch:
+      tags: [Expenses]
+      summary: "[v2] Update pengeluaran"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExpenseCreateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Expense" }
+    delete:
+      tags: [Expenses]
+      summary: "[v2] Hapus pengeluaran"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "204": { description: Terhapus }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifikasi milik user yang login
+      parameters:
+        - name: is_read
+          in: query
+          schema: { type: boolean }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Tandai notifikasi sudah dibaca
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+
+  # =====================================================================
+  # MODUL SALES & INVENTORY + FULFILLMENT (ORANG A)
+  # =====================================================================
+  /products:
+    get:
+      tags: [Products]
+      summary: List produk (search & filter kategori, pagination)
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: category_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: is_active
+          in: query
+          schema: { type: boolean }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedProducts" }
+    post:
+      tags: [Products]
+      summary: Tambah produk baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductCreateRequest" }
+      responses:
+        "201":
+          description: Produk dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      summary: Detail 1 produk
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Products]
+      summary: >
+        Update data produk. CATATAN: form ini tidak mengubah stock_qty
+        langsung (lihat Form_Web_MVP #15) — perubahan stok wajib lewat
+        POST /products/{id}/stock-adjustments supaya tercatat di log.
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProductUpdateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /products/import:
+    post:
+      tags: [Products]
+      summary: >
+        Import produk massal dari file XLS/XLSX. Proses berpotensi berat
+        (SRS 9.8/10.8) — sebaiknya async, mengembalikan job_id.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "202":
+          description: Job import diterima
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string, format: uuid }
+                  status: { type: string, enum: [queued, processing, done, failed] }
+
+  /products/{id}/stock-adjustments:
+    post:
+      tags: [Products]
+      summary: >
+        Penyesuaian stok manual + trigger event stock.updated (FR-SI-09).
+        Wajib 1 DB transaction (SRS 9.1).
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StockAdjustmentCreateRequest" }
+      responses:
+        "201":
+          description: Penyesuaian stok tercatat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StockAdjustment" }
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List kategori produk
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Category" }
+    post:
+      tags: [Categories]
+      summary: Tambah kategori baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Kategori dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Category" }
+
+  /transactions:
+    post:
+      tags: [Transactions]
+      summary: >
+        Checkout transaksi. WAJIB header Idempotency-Key (SRS 9.3) —
+        request yang sama diulang mengembalikan hasil yang sudah ada,
+        bukan transaksi baru. Wajib 1 DB transaction (9.1) + row lock
+        SELECT...FOR UPDATE pada products (9.2).
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransactionCreateRequest" }
+      responses:
+        "201":
+          description: Transaksi tercatat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Stok tidak cukup / konflik lain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [Transactions]
+      summary: List transaksi untuk halaman Laporan
+      parameters:
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          schema: { type: string, format: date }
+        - name: payment_method
+          in: query
+          schema: { type: string, enum: [cash, transfer, ewallet] }
+        - name: customer_type
+          in: query
+          schema: { type: string, enum: [walk_in, marketplace] }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedTransactions" }
+
+  /transactions/{id}:
+    get:
+      tags: [Transactions]
+      summary: Detail transaksi + data struk
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /transactions/{id}/void:
+    patch:
+      tags: [Transactions]
+      summary: >
+        Batalkan transaksi. Reversal stok otomatis (FR-FI-07), tetap
+        1 DB transaction (SRS 9.1).
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                void_reason: { type: string }
+      responses:
+        "200":
+          description: Transaksi dibatalkan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tickets:
+    post:
+      tags: [Tickets]
+      summary: Buat ticket packing dari sebuah order (FR-SI-10)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketCreateRequest" }
+      responses:
+        "201":
+          description: Ticket dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+    get:
+      tags: [Tickets]
+      summary: List semua ticket (filter status)
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/TicketStatus" }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Ticket" }
+
+  /tickets/my:
+    get:
+      tags: [Tickets]
+      summary: List ticket milik pengepak yang sedang login
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Ticket" }
+
+  /tickets/{id}/assign:
+    patch:
+      tags: [Tickets]
+      summary: >
+        Assign ticket ke 1 pengepak tertentu. Trigger insert ke
+        notifications (FR-FI-10) untuk pengepak terkait.
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigned_to_user_id]
+              properties:
+                assigned_to_user_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Ticket di-assign
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+
+  /tickets/{id}/broadcast:
+    patch:
+      tags: [Tickets]
+      summary: "[v2] Broadcast ticket ke semua pengepak available (FR-SI-12)"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Ticket di-broadcast
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+
+  /tickets/{id}/status:
+    patch:
+      tags: [Tickets]
+      summary: >
+        Update status pengerjaan ticket + checklist ticket_items
+        (is_packed). Emit event order.status.changed kalau semua item
+        selesai. Nilai enum status masih perlu difinalkan tim
+        (lihat catatan Field_Dictionary tabel tickets).
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: "#/components/schemas/TicketStatus" }
+                ticket_items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      is_packed: { type: boolean }
+      responses:
+        "200":
+          description: Status ticket diupdate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+
+  /shopping-list:
+    get:
+      tags: [ShoppingList]
+      summary: "[v2] List rekomendasi restock berdasarkan threshold (FR-SI-13)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShoppingListItem" }
+
+  /shopping-list/{id}/mark-ordered:
+    patch:
+      tags: [ShoppingList]
+      summary: "[v2] Tandai item restock sudah dipesan"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShoppingListItem" }
+
+  # =====================================================================
+  # MODUL ORDER HUB & CUSTOMER (ORANG B)
+  # =====================================================================
+  /platforms:
+    get:
+      tags: [Platforms]
+      summary: List platform e-commerce & status koneksi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Platform" }
+
+  /platforms/{platform}/connect:
+    post:
+      tags: [Platforms]
+      summary: >
+        Hubungkan akun toko ke platform (OAuth/API key). Untuk Shopee:
+        trigger redirect OAuth, bukan form isi manual — authorization
+        code balik lewat redirect_uri (lihat Form_Web_MVP #21).
+        Token WAJIB dienkripsi sebelum disimpan (NFR-03).
+      parameters: [{ $ref: "#/components/parameters/PlatformParam" }]
+      requestBody:
+        required: false
+        description: Untuk platform yang pakai API key manual (bukan OAuth)
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key: { type: string }
+                api_secret: { type: string }
+                oauth_code: { type: string, description: "Authorization code dari redirect OAuth (Shopee)" }
+      responses:
+        "200":
+          description: Platform terhubung
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Platform" }
+
+  /platforms/{platform}/disconnect:
+    post:
+      tags: [Platforms]
+      summary: Putuskan koneksi platform
+      parameters: [{ $ref: "#/components/parameters/PlatformParam" }]
+      responses:
+        "200":
+          description: Platform diputus
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Platform" }
+
+  /platforms/{platform}/sync:
+    post:
+      tags: [Platforms]
+      summary: Trigger sinkronisasi manual (FR-OC-07)
+      parameters: [{ $ref: "#/components/parameters/PlatformParam" }]
+      responses:
+        "202":
+          description: Sinkronisasi dimulai
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Platform" }
+
+  /webhooks/{platform}:
+    post:
+      tags: [Webhooks]
+      summary: >
+        Endpoint penerima webhook order baru. Publik secara HTTP tapi
+        WAJIB verifikasi signature/token sebelum payload diproses
+        (SRS 9.5). Balas 2xx cepat, proses detail order async.
+        idx_external_orders_platform_extid mencegah duplikasi (FR-OC-04).
+      security: []
+      parameters: [{ $ref: "#/components/parameters/PlatformParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Payload mentah dari platform, struktur beda tiap platform
+      responses:
+        "200": { description: "Webhook diterima (signature valid)" }
+        "401": { description: "Signature tidak valid" }
+
+  /orders:
+    get:
+      tags: [Orders]
+      summary: >
+        List semua order (filter platform/status/SLA, sort sisa waktu
+        deadline). Memakai idx_external_orders_status_deadline.
+        JANGAN SELECT kolom raw_payload di sini (SRS 10.5).
+      parameters:
+        - name: platform_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/ExternalOrderStatus" }
+        - name: sla_type
+          in: query
+          schema: { $ref: "#/components/schemas/SlaType" }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [sla_deadline_asc], default: sla_deadline_asc }
+        - { $ref: "#/components/parameters/PageParam" }
+        - { $ref: "#/components/parameters/LimitParam" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExternalOrderListItem" }
+
+  /orders/{id}:
+    get:
+      tags: [Orders]
+      summary: "Detail 1 order + item (raw_payload boleh disertakan di sini, SRS 10.5)"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalOrderDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /orders/{id}/status:
+    patch:
+      tags: [Orders]
+      summary: >
+        Update status order, diteruskan ke platform asal via adapter.
+        Emit event order.status.changed.
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/ExternalOrderStatus" }
+      responses:
+        "200":
+          description: Status order diupdate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalOrderListItem" }
+
+  /customers/search:
+    get:
+      tags: [Customers]
+      summary: Cari data customer dasar by nama/telepon saat checkout
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Customer" }
+
+  /customers:
+    get:
+      tags: [Customers]
+      summary: "[v2] List lengkap customer (halaman CRM, FR-OC-10)"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Customer" }
+    post:
+      tags: [Customers]
+      summary: "[v2] Tambah data customer manual"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCreateRequest" }
+      responses:
+        "201":
+          description: Customer dibuat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+
+  /customers/{id}:
+    get:
+      tags: [Customers]
+      summary: "[v2] Detail customer + riwayat transaksi & analitik"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+    patch:
+      tags: [Customers]
+      summary: "[v2] Update data customer"
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerCreateRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PlatformParam:
+      name: platform
+      in: path
+      required: true
+      schema: { type: string, enum: [shopee, tokopedia] }
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    LimitParam:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: Input tidak valid
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Tidak terautentikasi / kredensial salah
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Data tidak ditemukan
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    # -------------------- Shared --------------------
+    Error:
+      type: object
+      description: "Format error standar seluruh modul (SRS 9.7)"
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: "VALIDATION_ERROR" }
+            message: { type: string, example: "Field 'name' wajib diisi." }
+
+    PaymentMethod:
+      type: string
+      enum: [cash, transfer, ewallet]
+      description: "QRIS/kartu masuk v2 (FR-SI-04b)"
+
+    SlaType:
+      type: string
+      enum: [instant, same_day, reguler]
+
+    TicketStatus:
+      type: string
+      description: "Alur status ticket — usulan awal, nilai final perlu disepakati tim (lihat Field_Dictionary)"
+      enum: [unassigned, assigned, packing, packed, handed_over]
+
+    ExternalOrderStatus:
+      type: string
+      enum: [new, processing, shipped, completed, cancelled]
+
+    # -------------------- Auth / Staff --------------------
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email_or_username: { type: string }
+        role: { type: string, enum: [owner, kasir, pengepak] }
+        phone: { type: string, nullable: true }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PaginatedUsers:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    StaffCreateRequest:
+      type: object
+      required: [name, email_or_username, password, role]
+      properties:
+        name: { type: string }
+        email_or_username: { type: string }
+        password: { type: string, format: password }
+        role: { type: string, enum: [kasir, pengepak] }
+        phone: { type: string }
+
+    StaffUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        email_or_username: { type: string }
+        role: { type: string, enum: [kasir, pengepak] }
+        phone: { type: string }
+
+    # -------------------- Store Settings --------------------
+    StoreSettings:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        business_name: { type: string }
+        address: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        receipt_footer_note: { type: string, nullable: true }
+        logo_url: { type: string, nullable: true }
+        updated_by: { type: string, format: uuid, nullable: true }
+        updated_at: { type: string, format: date-time }
+
+    StoreSettingsUpdateRequest:
+      type: object
+      properties:
+        business_name: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        receipt_footer_note: { type: string }
+        logo_url: { type: string }
+
+    # -------------------- Dashboard / Reports --------------------
+    DashboardSummary:
+      type: object
+      properties:
+        total_products: { type: integer }
+        total_sales_amount: { type: number, format: decimal }
+        total_revenue: { type: number, format: decimal }
+        total_customers: { type: integer }
+        low_stock_products_count: { type: integer }
+
+    SalesReport:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Transaction" }
+        summary:
+          type: object
+          properties:
+            total_transactions: { type: integer }
+            total_revenue: { type: number, format: decimal }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    TopProductItem:
+      type: object
+      properties:
+        product_id: { type: string, format: uuid }
+        product_name: { type: string }
+        total_qty_sold: { type: integer }
+        total_revenue: { type: number, format: decimal }
+
+    Expense:
+      type: object
+      description: "[v2]"
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, nullable: true }
+        amount: { type: number, format: decimal }
+        description: { type: string, nullable: true }
+        expense_date: { type: string, format: date }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ExpenseCreateRequest:
+      type: object
+      required: [amount, expense_date]
+      properties:
+        category: { type: string }
+        amount: { type: number, format: decimal }
+        description: { type: string }
+        expense_date: { type: string, format: date }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        type: { type: string, example: "new_order" }
+        title: { type: string }
+        message: { type: string, nullable: true }
+        reference_type: { type: string, enum: [external_order, ticket], nullable: true }
+        reference_id: { type: string, format: uuid, nullable: true }
+        is_read: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    # -------------------- Products / Categories --------------------
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        category_id: { type: string, format: uuid, nullable: true }
+        category_name: { type: string, nullable: true, description: "Hasil JOIN categories" }
+        name: { type: string }
+        sku: { type: string, nullable: true }
+        price: { type: number, format: decimal }
+        cost_price: { type: number, format: decimal, nullable: true }
+        stock_qty: { type: integer }
+        low_stock_threshold: { type: integer }
+        image_url: { type: string, nullable: true }
+        unit: { type: string, nullable: true }
+        is_active: { type: boolean }
+        created_by: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PaginatedProducts:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Product" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    ProductCreateRequest:
+      type: object
+      required: [name, price, low_stock_threshold, stock_qty]
+      properties:
+        name: { type: string }
+        sku: { type: string }
+        category_id: { type: string, format: uuid }
+        price: { type: number, format: decimal }
+        low_stock_threshold: { type: integer, default: 5 }
+        stock_qty: { type: integer, description: "Stok awal, hanya dipakai saat create" }
+        image_url: { type: string }
+        unit: { type: string }
+
+    ProductUpdateRequest:
+      type: object
+      description: "TIDAK termasuk stock_qty — pakai endpoint stock-adjustments"
+      properties:
+        name: { type: string }
+        sku: { type: string }
+        category_id: { type: string, format: uuid }
+        price: { type: number, format: decimal }
+        low_stock_threshold: { type: integer }
+        image_url: { type: string }
+        unit: { type: string }
+        is_active: { type: boolean }
+
+    StockAdjustment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        change_qty: { type: integer, description: "Negatif = keluar, positif = masuk" }
+        reason:
+          type: string
+          enum: [sale, manual_adjustment, void_reversal, external_order, restock]
+        reference_type: { type: string, enum: [transaction, external_order, manual], nullable: true }
+        reference_id: { type: string, format: uuid, nullable: true }
+        stock_before: { type: integer }
+        stock_after: { type: integer }
+        adjusted_by_user_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    StockAdjustmentCreateRequest:
+      type: object
+      required: [change_qty, reason]
+      properties:
+        change_qty: { type: integer }
+        reason:
+          type: string
+          description: "Nilai enum pasti masih perlu didiskusikan tim (Form_Web_MVP #20)"
+          example: "restock"
+
+    # -------------------- Transactions --------------------
+    TransactionCreateRequest:
+      type: object
+      required: [type, payment_method, items]
+      properties:
+        type: { type: string, enum: [walk_in, pre_order] }
+        customer_id: { type: string, format: uuid, nullable: true }
+        payment_method: { $ref: "#/components/schemas/PaymentMethod" }
+        amount_paid: { type: number, format: decimal, nullable: true, description: "Wajib jika payment_method = cash" }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, qty]
+            properties:
+              product_id: { type: string, format: uuid }
+              qty: { type: integer, minimum: 1 }
+
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        idempotency_key: { type: string }
+        type: { type: string, enum: [walk_in, pre_order] }
+        customer_id: { type: string, format: uuid, nullable: true }
+        cashier_user_id: { type: string, format: uuid }
+        payment_method: { $ref: "#/components/schemas/PaymentMethod" }
+        subtotal: { type: number, format: decimal }
+        total_amount: { type: number, format: decimal }
+        amount_paid: { type: number, format: decimal, nullable: true }
+        change_amount: { type: number, format: decimal, nullable: true }
+        status: { type: string, enum: [completed, voided] }
+        voided_at: { type: string, format: date-time, nullable: true }
+        voided_by: { type: string, format: uuid, nullable: true }
+        void_reason: { type: string, nullable: true }
+        synced_offline: { type: boolean }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TransactionItem" }
+        created_at: { type: string, format: date-time }
+
+    TransactionItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        product_name_snapshot: { type: string }
+        qty: { type: integer }
+        unit_price: { type: number, format: decimal }
+        subtotal: { type: number, format: decimal }
+
+    PaginatedTransactions:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Transaction" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    # -------------------- Tickets --------------------
+    TicketCreateRequest:
+      type: object
+      required: [external_order_id, assigned_to_user_id, items]
+      properties:
+        external_order_id: { type: string, format: uuid }
+        assigned_to_user_id: { type: string, format: uuid }
+        notes: { type: string }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, qty]
+            properties:
+              product_id: { type: string, format: uuid }
+              qty: { type: integer, minimum: 1 }
+
+    Ticket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        external_order_id: { type: string, format: uuid }
+        assigned_to_user_id: { type: string, format: uuid, nullable: true }
+        status: { $ref: "#/components/schemas/TicketStatus" }
+        assigned_at: { type: string, format: date-time, nullable: true }
+        assigned_by: { type: string, format: uuid, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TicketItem" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TicketItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        product_name_snapshot: { type: string }
+        qty: { type: integer }
+        is_packed: { type: boolean }
+
+    ShoppingListItem:
+      type: object
+      description: "[v2]"
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid }
+        suggested_qty: { type: integer }
+        status: { type: string, enum: [pending, ordered] }
+        ordered_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    # -------------------- Platforms / Orders --------------------
+    Platform:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        platform_name: { type: string, enum: [shopee, tokopedia] }
+        shop_id_external: { type: string, nullable: true }
+        token_expires_at: { type: string, format: date-time, nullable: true }
+        is_connected: { type: boolean }
+        last_synced_at: { type: string, format: date-time, nullable: true }
+        last_sync_status: { type: string, enum: [success, failed], nullable: true }
+
+    ExternalOrderListItem:
+      type: object
+      description: "Untuk list — TIDAK menyertakan raw_payload (SRS 10.5)"
+      properties:
+        id: { type: string, format: uuid }
+        platform_id: { type: string, format: uuid }
+        external_order_id: { type: string }
+        customer_id: { type: string, format: uuid, nullable: true }
+        status: { $ref: "#/components/schemas/ExternalOrderStatus" }
+        sla_type: { $ref: "#/components/schemas/SlaType" }
+        sla_deadline: { type: string, format: date-time, nullable: true }
+        total_amount: { type: number, format: decimal, nullable: true }
+        received_at: { type: string, format: date-time }
+
+    ExternalOrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/ExternalOrderListItem"
+        - type: object
+          properties:
+            payment_method: { type: string, nullable: true }
+            shipping_address_snapshot: { type: object, nullable: true }
+            raw_payload: { type: object, description: "Jejak audit mentah (SRS 9.5)" }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/ExternalOrderItem" }
+
+    ExternalOrderItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product_id: { type: string, format: uuid, nullable: true }
+        external_item_ref: { type: string, nullable: true }
+        item_name_snapshot: { type: string }
+        qty: { type: integer }
+        unit_price: { type: number, format: decimal, nullable: true }
+
+    Customer:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        source: { type: string, nullable: true, example: "walk_in" }
+        external_customer_ref: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    CustomerCreateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        email: { type: string }

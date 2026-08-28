@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "order.received",
+  "description": "Dipublikasikan oleh modul ecommerce-sync saat order baru masuk dari platform e-commerce. Dikonsumsi oleh sales-inventory untuk diproses/di-ticket-kan.",
+  "type": "object",
+  "required": ["external_order_id", "platform_id", "sla_type", "occurred_at"],
+  "properties": {
+    "external_order_id": { "type": "string", "format": "uuid" },
+    "platform_id": { "type": "string", "format": "uuid" },
+    "sla_type": { "type": "string", "enum": ["instant", "same_day", "reguler"] },
+    "sla_deadline": { "type": "string", "format": "date-time" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}

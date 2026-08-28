@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "order.status.changed",
+  "description": "Dipublikasikan oleh modul sales-inventory saat status ticket/order berubah (misal semua item selesai dipacking). Dikonsumsi oleh ecommerce-sync untuk diteruskan ke platform asal.",
+  "type": "object",
+  "required": ["external_order_id", "new_status", "occurred_at"],
+  "properties": {
+    "external_order_id": { "type": "string", "format": "uuid" },
+    "new_status": {
+      "type": "string",
+      "enum": ["new", "processing", "shipped", "completed", "cancelled"]
+    },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}

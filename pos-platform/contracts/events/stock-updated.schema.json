@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "stock.updated",
+  "description": "Dipublikasikan oleh modul sales-inventory saat stok produk berubah (checkout, void, penyesuaian manual, sinkronisasi marketplace). Dikonsumsi oleh ecommerce-sync untuk update stok ke semua platform terhubung.",
+  "type": "object",
+  "required": ["product_id", "stock_after", "reason", "occurred_at"],
+  "properties": {
+    "product_id": { "type": "string", "format": "uuid" },
+    "change_qty": { "type": "integer" },
+    "stock_after": { "type": "integer" },
+    "reason": {
+      "type": "string",
+      "enum": ["sale", "manual_adjustment", "void_reversal", "external_order", "restock"]
+    },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}
