@@ -13,6 +13,7 @@ module.exports = {
   rules: {
     // Kunci boundary modular monolith: satu modul TIDAK BOLEH import
     // langsung dari internal/ modul lain — cuma boleh lewat index.ts-nya.
+    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     'import/no-restricted-paths': [
       'error',
       {

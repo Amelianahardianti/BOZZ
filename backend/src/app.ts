@@ -13,9 +13,14 @@ app.use('/api', ecommerceSyncRouter);
 app.use('/api', authProductRouter);
 
 // Format error terpusat & seragam (SRS 9.7): { error: { code, message } }
+interface AppError extends Error {
+  status?: number;
+  code?: string;
+}
+
 app.use(
   (
-    err: any,
+    err: AppError,
     _req: express.Request,
     res: express.Response,
     _next: express.NextFunction
