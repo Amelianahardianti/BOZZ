@@ -1,18 +1,28 @@
 import express from "express";
 import cors from "cors";
-import { shopeeRouter } from "./modules/shopee/shopee.routes";
-import { orderRouter } from "./modules/order/order.routes";
-import { syncRouter } from "./modules/sync/sync.routes";
+import { platformsRouter } from "./modules/platforms/platforms.routes";
+import { ordersRouter } from "./modules/orders/orders.routes";
+import { customersRouter } from "./modules/customers/customers.routes";
+import { webhooksRouter } from "./modules/webhooks/webhooks.routes";
 
 export const app = express();
 
 app.use(cors());
-app.use(express.json());
+// rawBody disimpan buat verifikasi signature webhook (JSON.stringify(req.body) tidak
+// dijamin identik byte-per-byte dengan body asli yang ditandatangani platform).
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/shopee/orders/sync", syncRouter);
-app.use("/api/shopee", shopeeRouter);
-app.use("/api/orders", orderRouter);
+app.use("/api/platforms", platformsRouter);
+app.use("/api/orders", ordersRouter);
+app.use("/api/customers", customersRouter);
+app.use("/api/webhooks", webhooksRouter);

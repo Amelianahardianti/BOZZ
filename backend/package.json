@@ -7,8 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "tsx src/modules/order/mock-orders.seed.ts",
-    "test": "tsx --test src/modules/order/order-pipeline.test.ts src/modules/order/order-fulfillment.test.ts"
+    "test": "tsx --test src/shared/sla.util.test.ts src/shared/crypto.util.test.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,6 @@
-import { prisma } from "../../db/prisma.client";
 import { env } from "../../config/env";
 import { buildPublicApiBaseString, sign } from "./shopee-signature.util";
+import { getPlatformToken, upsertPlatformToken, PLATFORM_SHOPEE } from "../platforms/token-store";
 
 const GET_ACCESS_TOKEN_PATH = "/api/v2/auth/token/get";
 const REFRESH_ACCESS_TOKEN_PATH = "/api/v2/auth/access_token/get";
@@ -35,7 +35,7 @@ export function buildAuthorizationUrl(state?: string): string {
 
 /**
  * Exchanges the authorization `code` + `shop_id` for access_token/refresh_token
- * via GetAccessToken (POST /api/v2/auth/token/get), then persists it.
+ * via GetAccessToken (POST /api/v2/auth/token/get), then persists it in `platforms`.
  */
 export async function exchangeCodeForToken(code: string, shopId: string) {
   const timestamp = Math.floor(Date.now() / 1000);
@@ -68,19 +68,20 @@ export async function exchangeCodeForToken(code: string, shopId: string) {
 
   const expiresAt = new Date(Date.now() + data.expire_in * 1000);
 
-  await prisma.shopeeToken.upsert({
-    where: { shopId },
-    update: { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt },
-    create: { shopId, accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt },
+  await upsertPlatformToken(PLATFORM_SHOPEE, {
+    shopIdExternal: shopId,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt,
   });
 
-  return { shopId, expiresAt };
+  return { shopIdExternal: shopId, expiresAt };
 }
 
 export async function getConnectionStatus() {
-  const token = await prisma.shopeeToken.findFirst({ orderBy: { updatedAt: "desc" } });
+  const token = await getPlatformToken(PLATFORM_SHOPEE);
   if (!token) return { connected: false as const };
-  return { connected: true as const, shopId: token.shopId, expiresAt: token.expiresAt };
+  return { connected: true as const, shopId: token.shopIdExternal, expiresAt: token.expiresAt };
 }
 
 /**
@@ -119,27 +120,30 @@ async function refreshAccessToken(shopId: string, refreshToken: string) {
 
   const expiresAt = new Date(Date.now() + data.expire_in * 1000);
 
-  return prisma.shopeeToken.update({
-    where: { shopId },
-    data: { accessToken: data.access_token, refreshToken: data.refresh_token, expiresAt },
+  await upsertPlatformToken(PLATFORM_SHOPEE, {
+    shopIdExternal: shopId,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt,
   });
+
+  return { shopIdExternal: shopId, accessToken: data.access_token };
 }
 
 /**
- * Returns a usable {shopId, accessToken} for calling Shop APIs, refreshing first if the
+ * Returns a usable {shopIdExternal, accessToken} for calling Shop APIs, refreshing first if the
  * stored token is expired (or close to it). Throws if no shop has been authorized yet.
  */
 export async function getValidAccessToken() {
-  const token = await prisma.shopeeToken.findFirst({ orderBy: { updatedAt: "desc" } });
+  const token = await getPlatformToken(PLATFORM_SHOPEE);
   if (!token) {
-    throw new Error("No Shopee shop connected yet — authorize via /api/shopee/authorize first");
+    throw new Error("No Shopee shop connected yet — authorize via /api/platforms/shopee/connect first");
   }
 
   const isExpiringSoon = token.expiresAt.getTime() - Date.now() < REFRESH_BUFFER_MS;
   if (!isExpiringSoon) {
-    return { shopId: token.shopId, accessToken: token.accessToken };
+    return { shopIdExternal: token.shopIdExternal, accessToken: token.accessToken };
   }
 
-  const refreshed = await refreshAccessToken(token.shopId, token.refreshToken);
-  return { shopId: refreshed.shopId, accessToken: refreshed.accessToken };
+  return refreshAccessToken(token.shopIdExternal, token.refreshToken);
 }

@@ -3,60 +3,559 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// Menyimpan access_token/refresh_token hasil Shopee Seller Authorization (Step 2 design).
-model ShopeeToken {
-  id           Int      @id @default(autoincrement())
-  shopId       String   @unique
-  accessToken  String
-  refreshToken String
-  expiresAt    DateTime
-  updatedAt    DateTime @updatedAt
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model categories {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String     @unique @db.VarChar(150)
+  created_by String?    @db.Uuid
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  users      users?     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products   products[]
 }
 
-// Field diambil dari response get_order_list & get_order_detail (dikonfirmasi Step 1),
-// diperluas untuk unified order multi-marketplace (MVP vertical slice).
-model Order {
-  id              Int      @id @default(autoincrement())
-  orderSn         String   @unique
-  orderStatus     String
-  region          String?
-  currency        String?
-  totalAmount     Float?
-  buyerUsername   String?
-  orderCreateTime Int?
-  orderUpdateTime Int?
-  payTime         Int?
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model channel_attribute_def_values {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attribute_def_id       String                 @db.Uuid
+  value_id               String                 @db.VarChar(100)
+  value_name             String?                @db.VarChar(200)
+  value_unit             String?                @db.VarChar(50)
+  channel_attribute_defs channel_attribute_defs @relation(fields: [attribute_def_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  // SHOPEE | TOKOPEDIA | OFFLINE — wajib diisi eksplisit oleh setiap caller (tidak ada
-  // default), supaya tidak ada asumsi diam-diam "semua order = Shopee".
-  marketplace String
-
-  // PENDING | PACKING | PACKED — alur fulfillment internal, terpisah dari orderStatus Shopee.
-  fulfillmentStatus String @default("PENDING")
-
-  items     OrderItem[]
-  syncedAt  DateTime    @updatedAt
-  createdAt DateTime    @default(now())
+  @@index([attribute_def_id], map: "idx_channel_attribute_def_values_def")
 }
 
-model OrderItem {
-  id    Int   @id @default(autoincrement())
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderId Int
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model channel_attribute_defs {
+  id                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_id                  String                         @db.Uuid
+  external_category_id         String                         @db.VarChar(100)
+  attribute_id                 String                         @db.VarChar(100)
+  name                         String?                        @db.VarChar(200)
+  is_mandatory                 Boolean                        @default(false)
+  input_type                   Int?                           @db.SmallInt
+  validation_meta              Json?
+  cached_at                    DateTime                       @default(now()) @db.Timestamptz(6)
+  channel_attribute_def_values channel_attribute_def_values[]
+  platforms                    platforms                      @relation(fields: [platform_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  itemId                 String
-  itemName               String
-  itemSku                String?
-  modelId                String?
-  modelSku               String?
-  modelQuantityPurchased Int
-  modelOriginalPrice     Float?
-  modelDiscountedPrice   Float?
-  orderItemId            String?
+  @@unique([platform_id, external_category_id, attribute_id], map: "idx_channel_attribute_defs_cat_attr")
+}
 
-  @@unique([orderId, itemId, modelId, orderItemId])
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model channel_categories {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_id          String    @db.Uuid
+  external_category_id String    @db.VarChar(100)
+  parent_external_id   String?   @db.VarChar(100)
+  name_default         String?   @db.VarChar(200)
+  name_display         String?   @db.VarChar(200)
+  is_leaf              Boolean   @default(false)
+  cached_at            DateTime  @default(now()) @db.Timestamptz(6)
+  platforms            platforms @relation(fields: [platform_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([platform_id, external_category_id], map: "idx_channel_categories_platform_extid")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model channel_listings {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_id                String                       @db.Uuid
+  product_id                 String?                      @db.Uuid
+  external_item_id           String                       @db.VarChar(100)
+  external_sku               String?                      @db.VarChar(100)
+  external_category_id       String?                      @db.VarChar(100)
+  channel_status             String                       @default("NORMAL") @db.VarChar(20)
+  sync_status                String                       @default("pending") @db.VarChar(20)
+  sync_error_message         String?
+  has_model                  Boolean                      @default(false)
+  is_fulfilled_by_platform   Boolean                      @default(false)
+  total_reserved_stock       Int?
+  total_available_stock      Int?
+  description_type           String?                      @default("normal") @db.VarChar(20)
+  scheduled_publish_time     DateTime?                    @db.Timestamptz(6)
+  video_upload_id            String?                      @db.VarChar(100)
+  last_synced_at             DateTime?                    @db.Timestamptz(6)
+  last_updated_at_channel    DateTime?                    @db.Timestamptz(6)
+  raw_payload                Json?
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  platforms                  platforms                    @relation(fields: [platform_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products                   products?                    @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_channel_attributes product_channel_attributes[]
+  product_channel_logistics  product_channel_logistics[]
+  product_images             product_images[]
+  product_stock_locations    product_stock_locations[]
+  product_wholesale_tiers    product_wholesale_tiers[]
+
+  @@unique([platform_id, external_item_id], map: "idx_channel_listings_platform_extid")
+  @@index([product_id, platform_id], map: "idx_channel_listings_product")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model channel_status_mapping {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_id     String    @db.Uuid
+  external_status String    @db.VarChar(50)
+  internal_status String    @db.VarChar(20)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  platforms       platforms @relation(fields: [platform_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([platform_id, external_status], map: "idx_channel_status_mapping_platform_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model customers {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String?           @db.VarChar(150)
+  phone                 String?           @db.VarChar(30)
+  email                 String?           @db.VarChar(150)
+  source                String            @default("walk_in") @db.VarChar(30)
+  external_customer_ref String?           @db.VarChar(100)
+  external_username     String?           @db.VarChar(150)
+  created_at            DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime          @default(now()) @db.Timestamptz(6)
+  external_orders       external_orders[]
+  transactions          transactions[]
+
+  @@index([phone], map: "idx_customers_phone")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model expenses {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category     String?  @db.VarChar(100)
+  amount       Decimal  @db.Decimal(14, 2)
+  description  String?
+  expense_date DateTime @db.Date
+  created_by   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  users        users?   @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model external_order_items {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_order_id   String          @db.Uuid
+  product_id          String?         @db.Uuid
+  external_item_ref   String?         @db.VarChar(100)
+  item_name_snapshot  String          @db.VarChar(200)
+  qty                 Int
+  unit_price          Decimal?        @db.Decimal(14, 2)
+  created_at          DateTime        @default(now()) @db.Timestamptz(6)
+  order_item_id       String?         @db.VarChar(100)
+  model_id            String?         @default("0") @db.VarChar(50)
+  model_name          String?         @db.VarChar(150)
+  model_sku           String?         @db.VarChar(100)
+  unit_price_original Decimal?        @db.Decimal(14, 2)
+  qty_active          Int?
+  qty_cancelled       Int             @default(0)
+  qty_returned        Int             @default(0)
+  weight              Decimal?        @db.Decimal(8, 3)
+  is_wholesale        Boolean         @default(false)
+  image_url           String?         @db.VarChar(500)
+  external_orders     external_orders @relation(fields: [external_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products            products?       @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model external_orders {
+  id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_id            String                  @db.Uuid
+  external_order_id      String                  @db.VarChar(100)
+  customer_id            String?                 @db.Uuid
+  status                 String                  @default("new") @db.VarChar(20)
+  sla_type               String                  @db.VarChar(20)
+  sla_deadline           DateTime?               @db.Timestamptz(6)
+  total_amount           Decimal?                @db.Decimal(14, 2)
+  payment_method         String?                 @db.VarChar(50)
+  raw_payload            Json?
+  received_at            DateTime                @default(now()) @db.Timestamptz(6)
+  created_at             DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                @default(now()) @db.Timestamptz(6)
+  external_status_raw    String?                 @db.VarChar(50)
+  fulfillment_flag       String?                 @db.VarChar(30)
+  is_cod                 Boolean                 @default(false)
+  shipping_carrier       String?                 @db.VarChar(100)
+  currency               String                  @default("IDR") @db.VarChar(3)
+  paid_at                DateTime?               @db.Timestamptz(6)
+  days_to_ship           Int?
+  cancel_by              String?                 @db.VarChar(20)
+  cancel_reason          String?
+  buyer_message          String?
+  seller_note            String?
+  dropshipper_name       String?                 @db.VarChar(150)
+  dropshipper_phone      String?                 @db.VarChar(30)
+  pickup_done_at         DateTime?               @db.Timestamptz(6)
+  warnings               Json?
+  external_order_items   external_order_items[]
+  customers              customers?              @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  platforms              platforms               @relation(fields: [platform_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order_packages         order_packages[]
+  order_shipping_address order_shipping_address?
+  tickets                tickets[]
+
+  @@unique([platform_id, external_order_id], map: "idx_external_orders_platform_extid")
+  @@index([status, sla_deadline], map: "idx_external_orders_status_deadline")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model notifications {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  type           String   @db.VarChar(50)
+  title          String   @db.VarChar(200)
+  message        String?
+  reference_type String?  @db.VarChar(20)
+  reference_id   String?  @db.Uuid
+  is_read        Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  users          users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id, is_read], map: "idx_notifications_user_unread")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_packages {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_order_id    String          @db.Uuid
+  package_number       String          @db.VarChar(100)
+  logistics_status     String?         @db.VarChar(50)
+  logistics_channel_id String?         @db.VarChar(50)
+  created_at           DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime        @default(now()) @db.Timestamptz(6)
+  external_orders      external_orders @relation(fields: [external_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([external_order_id, package_number], map: "idx_order_packages_order_number")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_shipping_address {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_order_id String          @unique(map: "idx_order_shipping_address_order") @db.Uuid
+  recipient_name    String?         @db.VarChar(150)
+  phone             String?         @db.VarChar(30)
+  full_address      String?
+  city              String?         @db.VarChar(100)
+  district          String?         @db.VarChar(100)
+  town              String?         @db.VarChar(100)
+  state             String?         @db.VarChar(100)
+  zipcode           String?         @db.VarChar(20)
+  latitude          Decimal?        @db.Decimal(10, 6)
+  longitude         Decimal?        @db.Decimal(10, 6)
+  created_at        DateTime        @default(now()) @db.Timestamptz(6)
+  external_orders   external_orders @relation(fields: [external_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model platforms {
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platform_name           String                   @db.VarChar(30)
+  shop_id_external        String?                  @db.VarChar(100)
+  access_token_encrypted  String?
+  refresh_token_encrypted String?
+  token_expires_at        DateTime?                @db.Timestamptz(6)
+  is_connected            Boolean                  @default(false)
+  last_synced_at          DateTime?                @db.Timestamptz(6)
+  last_sync_status        String?                  @db.VarChar(10)
+  created_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  channel_attribute_defs  channel_attribute_defs[]
+  channel_categories      channel_categories[]
+  channel_listings        channel_listings[]
+  channel_status_mapping  channel_status_mapping[]
+  external_orders         external_orders[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_batches {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id   String    @db.Uuid
+  batch_number String?   @db.VarChar(100)
+  quantity     Int
+  expiry_date  DateTime? @db.Date
+  received_at  DateTime  @default(now()) @db.Timestamptz(6)
+  created_by   String?   @db.Uuid
+  users        users?    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products     products  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([expiry_date], map: "idx_product_batches_expiry")
+  @@index([product_id], map: "idx_product_batches_product")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_channel_attribute_values {
+  id                           String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_channel_attribute_id String                     @db.Uuid
+  value_id                     String?                    @db.VarChar(100)
+  value_name                   String?                    @db.VarChar(200)
+  value_unit                   String?                    @db.VarChar(50)
+  product_channel_attributes   product_channel_attributes @relation(fields: [product_channel_attribute_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "product_channel_attribute_val_product_channel_attribute_id_fkey")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_channel_attributes {
+  id                               String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel_listing_id               String                             @db.Uuid
+  attribute_id                     String                             @db.VarChar(100)
+  is_mandatory                     Boolean                            @default(false)
+  product_channel_attribute_values product_channel_attribute_values[]
+  channel_listings                 channel_listings                   @relation(fields: [channel_listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([channel_listing_id], map: "idx_product_channel_attributes_listing")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_channel_logistics {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel_listing_id     String           @db.Uuid
+  logistic_id            String           @db.VarChar(50)
+  logistic_name          String?          @db.VarChar(150)
+  enabled                Boolean          @default(true)
+  is_free                Boolean          @default(false)
+  shipping_fee           Decimal?         @db.Decimal(14, 2)
+  size_id                String?          @db.VarChar(50)
+  estimated_shipping_fee Decimal?         @db.Decimal(14, 2)
+  channel_listings       channel_listings @relation(fields: [channel_listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([channel_listing_id], map: "idx_product_channel_logistics_listing")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_images {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel_listing_id String           @db.Uuid
+  image_id           String           @db.VarChar(150)
+  image_url          String?          @db.VarChar(500)
+  sort_order         Int              @default(0)
+  ratio              String?          @db.VarChar(10)
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  channel_listings   channel_listings @relation(fields: [channel_listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([channel_listing_id], map: "idx_product_images_listing")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_stock_locations {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel_listing_id  String           @db.Uuid
+  location_id         String?          @db.VarChar(100)
+  stock               Int              @default(0)
+  if_saleable         Boolean          @default(true)
+  platform_held_stock Int?
+  updated_at          DateTime         @default(now()) @db.Timestamptz(6)
+  channel_listings    channel_listings @relation(fields: [channel_listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([channel_listing_id], map: "idx_product_stock_locations_listing")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_wholesale_tiers {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  channel_listing_id String           @db.Uuid
+  min_count          Int
+  max_count          Int
+  unit_price         Decimal          @db.Decimal(14, 2)
+  channel_listings   channel_listings @relation(fields: [channel_listing_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([channel_listing_id], map: "idx_product_wholesale_tiers_listing")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model products {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  category_id          String?                @db.Uuid
+  name                 String                 @db.VarChar(200)
+  sku                  String?                @unique @db.VarChar(100)
+  price                Decimal                @db.Decimal(14, 2)
+  cost_price           Decimal?               @db.Decimal(14, 2)
+  stock_qty            Int                    @default(0)
+  low_stock_threshold  Int                    @default(5)
+  image_url            String?                @db.VarChar(500)
+  unit                 String?                @db.VarChar(30)
+  is_active            Boolean                @default(true)
+  created_by           String?                @db.Uuid
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  gtin_code            String?                @db.VarChar(50)
+  brand_id             String?                @db.VarChar(50)
+  brand_name           String?                @db.VarChar(150)
+  condition            String?                @default("NEW") @db.VarChar(10)
+  is_dangerous         Boolean                @default(false)
+  is_preorder          Boolean                @default(false)
+  days_to_ship         Int?
+  min_purchase_limit   Int?
+  max_purchase_limit   Int?
+  weight_kg            Decimal?               @db.Decimal(8, 3)
+  package_length_cm    Decimal?               @db.Decimal(8, 2)
+  package_width_cm     Decimal?               @db.Decimal(8, 2)
+  package_height_cm    Decimal?               @db.Decimal(8, 2)
+  channel_listings     channel_listings[]
+  external_order_items external_order_items[]
+  product_batches      product_batches[]
+  categories           categories?            @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                users?                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shopping_list_items  shopping_list_items[]
+  stock_adjustments    stock_adjustments[]
+  ticket_items         ticket_items[]
+  transaction_items    transaction_items[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model shopping_list_items {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id    String    @db.Uuid
+  suggested_qty Int
+  status        String    @default("pending") @db.VarChar(20)
+  ordered_at    DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  products      products  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model stock_adjustments {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id          String   @db.Uuid
+  change_qty          Int
+  reason              String   @db.VarChar(30)
+  reference_type      String?  @db.VarChar(20)
+  reference_id        String?  @db.Uuid
+  stock_before        Int
+  stock_after         Int
+  adjusted_by_user_id String?  @db.Uuid
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  users               users?   @relation(fields: [adjusted_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products            products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model store_settings {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  business_name       String   @db.VarChar(200)
+  address             String?
+  phone               String?  @db.VarChar(30)
+  receipt_footer_note String?
+  logo_url            String?  @db.VarChar(500)
+  updated_by          String?  @db.Uuid
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+  users               users?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ticket_items {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticket_id             String   @db.Uuid
+  product_id            String   @db.Uuid
+  product_name_snapshot String   @db.VarChar(200)
+  qty                   Int
+  is_packed             Boolean  @default(false)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  products              products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tickets               tickets  @relation(fields: [ticket_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tickets {
+  id                                       String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_order_id                        String          @db.Uuid
+  assigned_to_user_id                      String?         @db.Uuid
+  status                                   String          @default("unassigned") @db.VarChar(20)
+  assigned_at                              DateTime?       @db.Timestamptz(6)
+  assigned_by                              String?         @db.Uuid
+  completed_at                             DateTime?       @db.Timestamptz(6)
+  notes                                    String?
+  created_at                               DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                               DateTime        @default(now()) @db.Timestamptz(6)
+  ticket_items                             ticket_items[]
+  users_tickets_assigned_byTousers         users?          @relation("tickets_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_tickets_assigned_to_user_idTousers users?          @relation("tickets_assigned_to_user_idTousers", fields: [assigned_to_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  external_orders                          external_orders @relation(fields: [external_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([assigned_to_user_id, status], map: "idx_tickets_assignee_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model transaction_items {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transaction_id        String       @db.Uuid
+  product_id            String       @db.Uuid
+  product_name_snapshot String       @db.VarChar(200)
+  qty                   Int
+  unit_price            Decimal      @db.Decimal(14, 2)
+  subtotal              Decimal      @db.Decimal(14, 2)
+  created_at            DateTime     @default(now()) @db.Timestamptz(6)
+  products              products     @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transactions          transactions @relation(fields: [transaction_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([product_id], map: "idx_transaction_items_product_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model transactions {
+  id                                        String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  idempotency_key                           String              @unique @db.VarChar(100)
+  type                                      String              @db.VarChar(20)
+  customer_id                               String?             @db.Uuid
+  cashier_user_id                           String              @db.Uuid
+  payment_method                            String              @db.VarChar(20)
+  subtotal                                  Decimal             @db.Decimal(14, 2)
+  total_amount                              Decimal             @db.Decimal(14, 2)
+  amount_paid                               Decimal?            @db.Decimal(14, 2)
+  change_amount                             Decimal?            @db.Decimal(14, 2)
+  status                                    String              @default("completed") @db.VarChar(20)
+  voided_at                                 DateTime?           @db.Timestamptz(6)
+  voided_by                                 String?             @db.Uuid
+  void_reason                               String?
+  synced_offline                            Boolean             @default(false)
+  created_at                                DateTime            @default(now()) @db.Timestamptz(6)
+  transaction_items                         transaction_items[]
+  users_transactions_cashier_user_idTousers users               @relation("transactions_cashier_user_idTousers", fields: [cashier_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customers                                 customers?          @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_transactions_voided_byTousers       users?              @relation("transactions_voided_byTousers", fields: [voided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_transactions_created_at")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  id                                               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                                             String              @db.VarChar(150)
+  email_or_username                                String              @unique @db.VarChar(150)
+  password_hash                                    String              @db.VarChar(255)
+  role                                             String              @db.VarChar(20)
+  phone                                            String?             @db.VarChar(30)
+  is_active                                        Boolean             @default(true)
+  created_by                                       String?             @db.Uuid
+  created_at                                       DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime            @default(now()) @db.Timestamptz(6)
+  categories                                       categories[]
+  expenses                                         expenses[]
+  notifications                                    notifications[]
+  product_batches                                  product_batches[]
+  products                                         products[]
+  stock_adjustments                                stock_adjustments[]
+  store_settings                                   store_settings[]
+  tickets_tickets_assigned_byTousers               tickets[]           @relation("tickets_assigned_byTousers")
+  tickets_tickets_assigned_to_user_idTousers       tickets[]           @relation("tickets_assigned_to_user_idTousers")
+  transactions_transactions_cashier_user_idTousers transactions[]      @relation("transactions_cashier_user_idTousers")
+  transactions_transactions_voided_byTousers       transactions[]      @relation("transactions_voided_byTousers")
+  users                                            users?              @relation("usersTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_users                                      users[]             @relation("usersTousers")
+
+  @@index([role], map: "idx_users_role")
 }
