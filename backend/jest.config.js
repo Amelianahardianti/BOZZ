@@ -1,0 +1,14 @@
+// Konfigurasi Jest untuk backend. Tanpa file ini `npm test` cuma lolos
+// karena flag --passWithNoTests, bukan karena testnya jalan.
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src', '<rootDir>/test'],
+  testMatch: ['**/*.test.ts'],
+  transform: {
+    // tsconfig utama pakai module NodeNext (buat runtime Node), tapi Jest
+    // jalan di CommonJS. Di-override khusus test biar ts-jest tidak
+    // protes soal "hybrid module kind".
+    '^.+\.ts$': ['ts-jest', { tsconfig: { module: 'CommonJS' } }],
+  },
+};
