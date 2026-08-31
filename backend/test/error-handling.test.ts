@@ -22,7 +22,7 @@ function expectStandardShape(body: unknown): { code: string; message: string } {
 }
 
 async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
+  const res = await request(app).post('/api/auth/login').send({ email_or_username: username, password });
   expect(res.status).toBe(200);
   return res.body.token as string;
 }
@@ -62,13 +62,18 @@ describe('error dari middleware auth', () => {
   it('403 kalau role-nya tidak berhak', async () => {
     const tokenOwner = await loginAs('owner', 'owner123');
 
+    // Username unik per run -- test ini jalan lewat app.ts sungguhan ke
+    // DB beneran (bukan mock), jadi kalau dites 2x pakai username tetap
+    // bakal tabrakan 'Username sudah dipakai' dari run sebelumnya.
+    const kasirUsername = `kasir1-${Date.now()}`;
+
     const dibuat = await request(app)
       .post('/api/staff')
       .set('Authorization', `Bearer ${tokenOwner}`)
-      .send({ name: 'Kasir Satu', username: 'kasir1', password: 'kasir123', role: 'kasir' });
+      .send({ name: 'Kasir Satu', email_or_username: kasirUsername, password: 'kasir123', role: 'kasir' });
     expect(dibuat.status).toBe(201);
 
-    const tokenKasir = await loginAs('kasir1', 'kasir123');
+    const tokenKasir = await loginAs(kasirUsername, 'kasir123');
     const res = await request(app).get('/api/staff').set('Authorization', `Bearer ${tokenKasir}`);
 
     expect(res.status).toBe(403);
@@ -78,7 +83,7 @@ describe('error dari middleware auth', () => {
 
 describe('error dari validasi input', () => {
   it('400 VALIDATION_ERROR dan menyebut field yang bermasalah', async () => {
-    const res = await request(app).post('/api/auth/login').send({ username: 'owner' });
+    const res = await request(app).post('/api/auth/login').send({ email_or_username: 'owner' });
 
     expect(res.status).toBe(400);
     const error = expectStandardShape(res.body);
@@ -101,7 +106,7 @@ describe('error yang dilempar service (bentuk object lama)', () => {
   it('tetap diterjemahkan ke bentuk standar', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'owner', password: 'salah-banget' });
+      .send({ email_or_username: 'owner', password: 'salah-banget' });
 
     expect(res.status).toBe(401);
     const error = expectStandardShape(res.body);
@@ -153,7 +158,7 @@ describe('error tak terduga lewat request sungguhan', () => {
 
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'owner', password: 'owner123' });
+      .send({ email_or_username: 'owner', password: 'owner123' });
 
     expect(res.status).toBe(500);
     expect(res.headers['content-type']).toMatch(/application\/json/);
