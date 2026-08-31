@@ -39,3 +39,20 @@ export interface NotificationCreator {
     created_at: string;
   }>;
 }
+
+/**
+ * Diimplementasikan modul auth-product, diekspor lewat index.ts
+ * publiknya sebagai `findActiveUser` (+ tipe `UserSummary`).
+ *
+ * Dipakai modul lain yang butuh mastiin sebuah user_id itu benar ada,
+ * masih aktif, dan tau rolenya -- misal Sales & Inventory (Fulfillment)
+ * pas assign ticket packing, buat mastiin yang dipilih itu Pengepak
+ * yang masih aktif, bukan kasir atau akun yang sudah dinonaktifkan.
+ */
+export interface ActiveUserFinder {
+  findActiveUser(id: string): Promise<{
+    id: string;
+    name: string;
+    role: 'owner' | 'kasir' | 'pengepak';
+  } | null>;
+}

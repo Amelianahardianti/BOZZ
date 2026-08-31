@@ -105,6 +105,32 @@ export async function deactivateStaff(id: string) {
   return toPublicUser(updated);
 }
 
+/**
+ * Data akun seperlunya buat dipakai modul lain -- sengaja bukan seluruh
+ * User, biar field sensitif (password_hash, dll) tidak ikut menyebar.
+ */
+export interface UserSummary {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+/**
+ * Cari akun yang MASIH AKTIF. Diekspor lewat index.ts karena modul lain
+ * perlu memastikan sebuah akun benar ada, aktif, dan rolenya sesuai --
+ * misalnya sales-inventory yang harus memastikan ticket packing
+ * di-assign ke Pengepak, bukan ke kasir atau akun yang sudah nonaktif.
+ * Modul yang bertanggung jawab atas data user adalah modul ini, jadi
+ * pengecekannya juga tinggal di sini (bukan di sales-inventory).
+ *
+ * @returns null kalau akunnya tidak ada atau sudah dinonaktifkan.
+ */
+export async function findActiveUser(id: string): Promise<UserSummary | null> {
+  const user = await repo.findById(id);
+  if (!user || !user.is_active) return null;
+  return { id: user.id, name: user.name, role: user.role };
+}
+
 // Tabel store_settings sengaja didesain cuma 1 baris (profil toko
 // tunggal), tapi tidak ada endpoint khusus untuk bikin baris pertamanya
 // (lihat contracts/api.yaml -- cuma GET & PATCH). Jadi baris default
