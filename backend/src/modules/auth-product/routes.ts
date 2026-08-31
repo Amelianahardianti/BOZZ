@@ -15,7 +15,7 @@ export const router = Router();
 
 // ---------- POST /api/auth/login ----------
 const loginSchema = z.object({
-  username: z.string().min(1),
+  email_or_username: z.string().min(1),
   password: z.string().min(1),
 });
 
@@ -23,7 +23,7 @@ router.post(
   '/auth/login',
   asyncHandler(async (req, res) => {
     const body = loginSchema.parse(req.body);
-    const result = await service.login(body.username, body.password);
+    const result = await service.login(body.email_or_username, body.password);
     res.status(200).json(result);
   })
 );
@@ -60,7 +60,7 @@ router.get(
 // ---------- POST /api/staff ----------
 const createStaffSchema = z.object({
   name: z.string().min(1),
-  username: z.string().min(1),
+  email_or_username: z.string().min(1),
   password: z.string().min(6, 'Password minimal 6 karakter'),
   role: z.enum(['kasir', 'pengepak']),
   phone: z.string().optional(),
@@ -83,7 +83,7 @@ router.post(
 // ---------- PATCH /api/staff/:id ----------
 const updateStaffSchema = z.object({
   name: z.string().min(1).optional(),
-  username: z.string().min(1).optional(),
+  email_or_username: z.string().min(1).optional(),
   role: z.enum(['kasir', 'pengepak']).optional(),
   phone: z.string().optional(),
 });
