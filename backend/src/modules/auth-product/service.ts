@@ -104,3 +104,87 @@ export async function deactivateStaff(id: string) {
   }
   return toPublicUser(updated);
 }
+
+// Tabel store_settings sengaja didesain cuma 1 baris (profil toko
+// tunggal), tapi tidak ada endpoint khusus untuk bikin baris pertamanya
+// (lihat contracts/api.yaml -- cuma GET & PATCH). Jadi baris default
+// dibuat otomatis (lazy) begitu ada yang butuh, baik lewat GET pertama
+// kali maupun PATCH pertama kali.
+export async function getStoreSettings() {
+  const existing = await repo.getStoreSettings();
+  if (existing) {
+    return existing;
+  }
+  return repo.createStoreSettings({ business_name: 'Toko Saya' });
+}
+
+export async function updateStoreSettings(
+  changes: {
+    business_name?: string;
+    address?: string;
+    phone?: string;
+    receipt_footer_note?: string;
+    logo_url?: string;
+  },
+  updatedByUserId: string
+) {
+  const existing = await repo.getStoreSettings();
+
+  if (!existing) {
+    return repo.createStoreSettings({
+      business_name: changes.business_name ?? 'Toko Saya',
+      address: changes.address,
+      phone: changes.phone,
+      receipt_footer_note: changes.receipt_footer_note,
+      logo_url: changes.logo_url,
+      updated_by: updatedByUserId,
+    });
+  }
+
+  const updated = await repo.updateStoreSettings(existing.id, changes, updatedByUserId);
+  if (!updated) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Pengaturan toko tidak ditemukan.' };
+  }
+  return updated;
+}
+
+export async function listNotifications(
+  userId: string,
+  filters: { isRead?: boolean; page: number; limit: number }
+) {
+  return repo.listNotificationsByUser(userId, filters);
+}
+
+export async function markNotificationRead(id: string, userId: string) {
+  const existing = await repo.findNotificationById(id);
+  // Disamarkan jadi 404 (bukan 403) kalau notifikasi itu bukan
+  // punya user yang lagi login -- staf lain tidak perlu tahu notifikasi
+  // itu ada sama sekali.
+  if (!existing || existing.user_id !== userId) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Notifikasi tidak ditemukan.' };
+  }
+
+  const updated = await repo.markNotificationRead(id);
+  return updated!;
+}
+
+// Dipakai modul lain (Sales & Inventory saat assign ticket, Order Hub
+// saat order baru masuk) lewat shared/interfaces -- lihat SRS 9.6.
+// Bukan endpoint HTTP, dipanggil langsung sebagai function call.
+export async function createNotification(input: {
+  userId: string;
+  type: string;
+  title: string;
+  message?: string;
+  referenceType?: 'external_order' | 'ticket';
+  referenceId?: string;
+}) {
+  return repo.createNotification({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    reference_type: input.referenceType,
+    reference_id: input.referenceId,
+  });
+}

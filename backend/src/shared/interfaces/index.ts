@@ -8,3 +8,34 @@
 // export interface ProductStockChecker {
 //   getAvailableStock(productId: string): Promise<number>;
 // }
+
+/**
+ * Diimplementasikan modul auth-product (backend/src/modules/auth-product),
+ * diekspor lewat index.ts publiknya sebagai `createNotification`.
+ *
+ * Dipakai modul lain untuk bikin notifikasi in-app (FR-FI-10), contoh:
+ *  - Sales & Inventory (Fulfillment): assign ticket ke pengepak ->
+ *    type: 'new_ticket', reference_type: 'ticket'
+ *  - Order Hub & Customer: order marketplace baru masuk ->
+ *    type: 'new_order', reference_type: 'external_order'
+ */
+export interface NotificationCreator {
+  createNotification(input: {
+    userId: string;
+    type: string;
+    title: string;
+    message?: string;
+    referenceType?: 'external_order' | 'ticket';
+    referenceId?: string;
+  }): Promise<{
+    id: string;
+    user_id: string;
+    type: string;
+    title: string;
+    message: string | null;
+    reference_type: 'external_order' | 'ticket' | null;
+    reference_id: string | null;
+    is_read: boolean;
+    created_at: string;
+  }>;
+}

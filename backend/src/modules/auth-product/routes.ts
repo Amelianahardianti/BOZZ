@@ -109,3 +109,68 @@ router.patch(
     res.status(200).json(updated);
   })
 );
+
+// ---------- GET /api/store-settings ----------
+router.get(
+  '/store-settings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (_req, res) => {
+    const settings = await service.getStoreSettings();
+    res.status(200).json(settings);
+  })
+);
+
+// ---------- PATCH /api/store-settings ----------
+const updateStoreSettingsSchema = z.object({
+  business_name: z.string().min(1).optional(),
+  address: z.string().optional(),
+  phone: z.string().optional(),
+  receipt_footer_note: z.string().optional(),
+  logo_url: z.string().optional(),
+});
+
+router.patch(
+  '/store-settings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const body = updateStoreSettingsSchema.parse(req.body);
+    const updated = await service.updateStoreSettings(body, req.user!.id);
+    res.status(200).json(updated);
+  })
+);
+
+// ---------- GET /api/notifications ----------
+const listNotificationsQuerySchema = z.object({
+  is_read: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+router.get(
+  '/notifications',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const query = listNotificationsQuerySchema.parse(req.query);
+    const notifications = await service.listNotifications(req.user!.id, {
+      isRead: query.is_read,
+      page: query.page,
+      limit: query.limit,
+    });
+    res.status(200).json(notifications);
+  })
+);
+
+// ---------- PATCH /api/notifications/:id/read ----------
+router.patch(
+  '/notifications/:id/read',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const updated = await service.markNotificationRead(req.params.id, req.user!.id);
+    res.status(200).json(updated);
+  })
+);
