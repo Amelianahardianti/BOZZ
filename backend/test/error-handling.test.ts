@@ -147,7 +147,7 @@ describe('error tak terduga lewat request sungguhan', () => {
   it('500 generik ke client, detail lengkapnya masuk log server', async () => {
     const pesanBocor = 'connect ECONNREFUSED 10.0.0.9:5432 password=SUPERRAHASIA';
     const repoSpy = jest
-      .spyOn(repo, 'findByUsername')
+      .spyOn(repo, 'findByEmailOrUsername')
       .mockRejectedValue(new Error(pesanBocor));
     const logSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
