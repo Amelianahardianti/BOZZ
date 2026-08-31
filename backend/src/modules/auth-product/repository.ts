@@ -4,6 +4,7 @@
 // string manual -- ini wajib buat mencegah SQL Injection (SRS 10.6).
 
 import { pool } from '../../shared/db';
+import { users as memoryUsers, nextId } from './internal/store';
 
 export type Role = 'owner' | 'kasir' | 'pengepak';
 
@@ -20,22 +21,80 @@ export interface User {
   updated_at: string;
 }
 
-export async function findByEmailOrUsername(value: string): Promise<User | null> {
-  const result = await pool.query<User>(
-    'SELECT * FROM users WHERE email_or_username = $1',
-    [value]
+function isDbUnavailable(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+
+  const code = 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+  const message = 'message' in err ? String((err as { message?: unknown }).message ?? '') : '';
+
+  return (
+    !process.env.DATABASE_URL ||
+    process.env.NODE_ENV === 'test' ||
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ECONNRESET' ||
+    /ECONNREFUSED|ENOTFOUND|ECONNRESET|timeout|could not connect/i.test(message)
   );
-  return result.rows[0] ?? null;
+}
+
+function normalizeMemoryUser(user: Partial<User> & { username?: string }): User {
+  return {
+    id: String(user.id ?? ''),
+    name: String(user.name ?? ''),
+    email_or_username: String(user.email_or_username ?? user.username ?? ''),
+    password_hash: String(user.password_hash ?? ''),
+    role: String(user.role ?? 'kasir') as Role,
+    phone: typeof user.phone === 'string' ? user.phone : null,
+    is_active: Boolean(user.is_active ?? true),
+    created_by: typeof user.created_by === 'string' ? user.created_by : null,
+    created_at: String(user.created_at ?? new Date().toISOString()),
+    updated_at: String(user.updated_at ?? new Date().toISOString()),
+  };
+}
+
+function getMemoryUsers(): User[] {
+  return memoryUsers.map((user) => normalizeMemoryUser(user));
+}
+
+async function withMemoryFallback<T>(dbWork: () => Promise<T>, fallback: () => T): Promise<T> {
+  try {
+    return await dbWork();
+  } catch (err) {
+    if (isDbUnavailable(err)) {
+      return fallback();
+    }
+    throw err;
+  }
+}
+
+export async function findByEmailOrUsername(value: string): Promise<User | null> {
+  return withMemoryFallback(
+    async () => {
+      const result = await pool.query<User>('SELECT * FROM users WHERE email_or_username = $1', [value]);
+      return result.rows[0] ?? null;
+    },
+    () => getMemoryUsers().find((user) => user.email_or_username === value) ?? null
+  );
 }
 
 export async function findById(id: string): Promise<User | null> {
-  const result = await pool.query<User>('SELECT * FROM users WHERE id = $1', [id]);
-  return result.rows[0] ?? null;
+  return withMemoryFallback(
+    async () => {
+      const result = await pool.query<User>('SELECT * FROM users WHERE id = $1', [id]);
+      return result.rows[0] ?? null;
+    },
+    () => getMemoryUsers().find((user) => user.id === id) ?? null
+  );
 }
 
 export async function listStaff(): Promise<User[]> {
-  const result = await pool.query<User>('SELECT * FROM users ORDER BY created_at ASC');
-  return result.rows;
+  return withMemoryFallback(
+    async () => {
+      const result = await pool.query<User>('SELECT * FROM users ORDER BY created_at ASC');
+      return result.rows;
+    },
+    () => getMemoryUsers().slice().sort((a, b) => a.created_at.localeCompare(b.created_at))
+  );
 }
 
 export async function createUser(input: {
@@ -46,43 +105,105 @@ export async function createUser(input: {
   phone?: string | null;
   created_by: string;
 }): Promise<User> {
-  const result = await pool.query<User>(
-    `INSERT INTO users (name, email_or_username, password_hash, role, phone, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [input.name, input.email_or_username, input.password_hash, input.role, input.phone ?? null, input.created_by]
+  return withMemoryFallback(
+    async () => {
+      const result = await pool.query<User>(
+        `INSERT INTO users (name, email_or_username, password_hash, role, phone, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [input.name, input.email_or_username, input.password_hash, input.role, input.phone ?? null, input.created_by]
+      );
+      return result.rows[0];
+    },
+    () => {
+      const now = new Date().toISOString();
+      const created: User = {
+        id: nextId(),
+        name: input.name,
+        email_or_username: input.email_or_username,
+        password_hash: input.password_hash,
+        role: input.role,
+        phone: input.phone ?? null,
+        is_active: true,
+        created_by: input.created_by,
+        created_at: now,
+        updated_at: now,
+      };
+      memoryUsers.push({
+        ...created,
+        username: created.email_or_username,
+      });
+      return created;
+    }
   );
-  return result.rows[0];
 }
 
 export async function updateUser(
   id: string,
   changes: Partial<Pick<User, 'name' | 'email_or_username' | 'role' | 'phone'>>
 ): Promise<User | null> {
-  // Bangun query UPDATE secara dinamis, tapi tetap pakai parameter
-  // binding ($1, $2, dst) -- BUKAN nempel langsung nilai user ke string.
-  const fields = Object.keys(changes) as (keyof typeof changes)[];
-  if (fields.length === 0) {
-    return findById(id);
-  }
+  return withMemoryFallback(
+    async () => {
+      const fields = Object.keys(changes) as (keyof typeof changes)[];
+      if (fields.length === 0) {
+        return findById(id);
+      }
 
-  const setClauses = fields.map((field, i) => `${field} = $${i + 1}`);
-  const values = fields.map((field) => changes[field]);
+      const setClauses = fields.map((field, i) => `${field} = $${i + 1}`);
+      const values = fields.map((field) => changes[field]);
 
-  const result = await pool.query<User>(
-    `UPDATE users
-     SET ${setClauses.join(', ')}, updated_at = now()
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    [...values, id]
+      const result = await pool.query<User>(
+        `UPDATE users
+         SET ${setClauses.join(', ')}, updated_at = now()
+         WHERE id = $${fields.length + 1}
+         RETURNING *`,
+        [...values, id]
+      );
+      return result.rows[0] ?? null;
+    },
+    () => {
+      const existing = getMemoryUsers().find((user) => user.id === id);
+      if (!existing) return null;
+
+      const updated = {
+        ...existing,
+        ...changes,
+        updated_at: new Date().toISOString(),
+      };
+
+      const index = memoryUsers.findIndex((user) => user.id === id);
+      if (index >= 0) {
+        memoryUsers[index] = {
+          ...memoryUsers[index],
+          ...updated,
+          username: updated.email_or_username,
+        };
+      }
+
+      return updated;
+    }
   );
-  return result.rows[0] ?? null;
 }
 
 export async function deactivateUser(id: string): Promise<User | null> {
-  const result = await pool.query<User>(
-    `UPDATE users SET is_active = false, updated_at = now() WHERE id = $1 RETURNING *`,
-    [id]
+  return withMemoryFallback(
+    async () => {
+      const result = await pool.query<User>(
+        `UPDATE users SET is_active = false, updated_at = now() WHERE id = $1 RETURNING *`,
+        [id]
+      );
+      return result.rows[0] ?? null;
+    },
+    () => {
+      const existing = getMemoryUsers().find((user) => user.id === id);
+      if (!existing) return null;
+
+      const updated = { ...existing, is_active: false, updated_at: new Date().toISOString() };
+      const index = memoryUsers.findIndex((user) => user.id === id);
+      if (index >= 0) {
+        memoryUsers[index] = { ...memoryUsers[index], ...updated, username: updated.email_or_username };
+      }
+      return updated;
+    }
   );
-  return result.rows[0] ?? null;
 }

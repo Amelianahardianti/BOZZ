@@ -1,4 +1,4 @@
-// backend/test/error-handling.test.ts
+// backend/test/9or-handling.test.ts
 
 // Menguji kontrak SRS 9.7: apa pun yang salah, response-nya selalu
 // { error: { code, message } } dan selalu JSON — tidak pernah HTML,

@@ -1,15 +1,16 @@
 // backend/src/shared/db.ts
 
-// Ini SATU pintu koneksi ke database Postgres buat SELURUH backend.
-// Semua modul (auth-product, sales-inventory, ecommerce-sync) pakai
-// "pool" yang sama ini buat query ke database -- bukan bikin koneksi
-// baru sendiri-sendiri.
-//
-// "Pool" itu semacam kumpulan koneksi yang dipakai bergantian, bukan
-// bikin koneksi baru tiap ada request (SRS 10.4 -- database gratisan
-// kayak Supabase/Neon punya batas jumlah koneksi bersamaan).
+// SATU pintu koneksi ke database Postgres buat seluruh backend. Dua cara
+// akses tersedia di sini karena modul berbeda pakai pola berbeda:
+//   - `pool` (raw pg.Pool)   — dipakai sales-inventory, auth-product
+//   - `prisma` (Prisma Client) — dipakai ecommerce-sync
+// Keduanya connect ke DB yang sama, jadi jumlah koneksi gabungan (pool.max
+// + Prisma) tetap perlu diperhatikan terhadap batas Supabase free-tier
+// (SRS 10.4) kalau nanti kerasa "too many connections".
 
 import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -19,3 +20,9 @@ export const pool = new Pool({
 pool.on('error', (err: Error) => {
   console.error('Error tak terduga dari koneksi database:', err);
 });
+
+// Prisma 7 wajib pakai driver adapter (bukan url langsung di datasource
+// block) — lihat https://pris.ly/d/driver-adapters.
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+
+export const prisma = new PrismaClient({ adapter });
