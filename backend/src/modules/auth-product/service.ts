@@ -7,7 +7,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import * as repo from './repository';
-import { Role, User } from './internal/store';
+import { Role, User } from './repository';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-ganti-di-production';
 const JWT_EXPIRES_IN = '8h'; // sesi login berlaku 8 jam, sesuaikan kalau perlu
@@ -19,8 +19,8 @@ function toPublicUser(user: User) {
   return publicUser;
 }
 
-export async function login(username: string, password: string) {
-  const user = await repo.findByUsername(username);
+export async function login(email_or_username: string, password: string) {
+  const user = await repo.findByEmailOrUsername(email_or_username);
 
   if (!user || !user.is_active) {
     throw { status: 401, code: 'INVALID_CREDENTIALS', message: 'Username atau password salah.' };
@@ -55,7 +55,7 @@ export async function listStaff() {
 
 export async function createStaff(input: {
   name: string;
-  username: string;
+  email_or_username: string;
   password: string;
   role: Role;
   phone?: string;
@@ -67,7 +67,7 @@ export async function createStaff(input: {
     throw { status: 400, code: 'VALIDATION_ERROR', message: 'Role Owner tidak bisa dibuat lewat endpoint ini.' };
   }
 
-  const existing = await repo.findByUsername(input.username);
+  const existing = await repo.findByEmailOrUsername(input.email_or_username);
   if (existing) {
     throw { status: 400, code: 'VALIDATION_ERROR', message: 'Username sudah dipakai.' };
   }
@@ -76,7 +76,7 @@ export async function createStaff(input: {
 
   const newUser = await repo.createUser({
     name: input.name,
-    username: input.username,
+    email_or_username: input.email_or_username,
     password_hash,
     role: input.role,
     phone: input.phone,
@@ -88,7 +88,7 @@ export async function createStaff(input: {
 
 export async function updateStaff(
   id: string,
-  changes: { name?: string; username?: string; role?: Role; phone?: string }
+  changes: { name?: string; email_or_username?: string; role?: Role; phone?: string }
 ) {
   const updated = await repo.updateUser(id, changes);
   if (!updated) {
