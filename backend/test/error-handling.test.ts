@@ -1,16 +1,30 @@
-// backend/test/9or-handling.test.ts
+// backend/test/error-handling.test.ts
 
 // Menguji kontrak SRS 9.7: apa pun yang salah, response-nya selalu
 // { error: { code, message } } dan selalu JSON — tidak pernah HTML,
 // tidak pernah bocorin detail internal.
+//
+// File ini HANYA menguji middleware error-handling & RBAC, bukan logic
+// auth-product yang sebenarnya (login/staff CRUD punya test sendiri di
+// modulnya). Makanya modul repository.ts (satu-satunya titik ke
+// database) di-mock total lewat jest.mock -- supaya test ini jalan
+// cepat, tidak butuh koneksi Supabase, dan tidak numpuk data test ke
+// DB beneran tiap kali dijalankan.
 
-import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { app, toErrorResponse } from '../src/app';
 import { AppError, badRequest, conflict } from '../src/shared/errors';
 import * as repo from '../src/modules/auth-product/repository';
+import { User } from '../src/modules/auth-product/repository';
 import { tokenFor } from './helpers/auth';
-import { describe, expect, it, jest } from '@jest/globals';
+
+jest.mock('../src/modules/auth-product/repository');
+
+const mockedRepo = repo as jest.Mocked<typeof repo>;
+
+afterEach(() => {
+  jest.resetAllMocks();
+});
 
 /** Pastikan body-nya persis bentuk standar, bukan sekadar "mirip". */
 function expectStandardShape(body: unknown): { code: string; message: string } {
@@ -22,6 +36,23 @@ function expectStandardShape(body: unknown): { code: string; message: string } {
   expect(typeof error.message).toBe('string');
   expect(error.message.length).toBeGreaterThan(0);
   return error;
+}
+
+/** User palsu buat isi mock repo -- tidak pernah ke database beneran. */
+function buildUser(overrides: Partial<User> = {}): User {
+  return {
+    id: 'mock-owner-id',
+    name: 'Owner Uji',
+    email_or_username: 'owner',
+    password_hash: '$2a$10$tidakDipakaiLangsungDiTest.................',
+    role: 'owner',
+    phone: null,
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  };
 }
 
 describe('endpoint tidak dikenal', () => {
@@ -57,7 +88,10 @@ describe('error dari middleware auth', () => {
   });
 
   it('403 kalau role-nya tidak berhak', async () => {
-    // GET /api/staff cuma buat Owner; kasir harus ditolak 403, bukan 401.
+    // GET /api/staff cuma buat Owner. Role-nya sudah ada di JWT payload
+    // (requireRole cek dari situ, bukan query ulang ke DB), jadi token
+    // dipalsukan langsung lewat helper yang sama dipakai modul lain --
+    // tidak perlu login beneran / bikin akun kasir ke database.
     const res = await request(app)
       .get('/api/staff')
       .set('Authorization', `Bearer ${tokenFor('kasir')}`);
@@ -69,7 +103,7 @@ describe('error dari middleware auth', () => {
 
 describe('error dari validasi input', () => {
   it('400 VALIDATION_ERROR dan menyebut field yang bermasalah', async () => {
-    const res = await request(app).post('/api/auth/login').send({ username: 'owner' });
+    const res = await request(app).post('/api/auth/login').send({ email_or_username: 'owner' });
 
     expect(res.status).toBe(400);
     const error = expectStandardShape(res.body);
@@ -90,26 +124,14 @@ describe('error dari validasi input', () => {
 
 describe('error yang dilempar service (bentuk object lama)', () => {
   it('tetap diterjemahkan ke bentuk standar', async () => {
-    // Akunnya ada, passwordnya yang salah. Datanya dipalsukan di sini
-    // supaya test ini tidak butuh koneksi database.
-    const repoSpy = jest.spyOn(repo, 'findByEmailOrUsername').mockResolvedValue({
-      id: 'user-uji',
-      name: 'Owner Uji',
-      email_or_username: 'owner',
-      password_hash: bcrypt.hashSync('password-yang-benar', 10),
-      role: 'owner',
-      phone: null,
-      is_active: true,
-      created_by: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+    // Akunnya "ada" (lewat mock), tinggal password-nya yang salah --
+    // bcrypt.compare terhadap hash acak di atas pasti gagal, jadi tidak
+    // perlu bcrypt beneran buat memicu INVALID_CREDENTIALS.
+    mockedRepo.findByEmailOrUsername.mockResolvedValue(buildUser());
 
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email_or_username: 'owner', password: 'salah-banget' });
-
-    repoSpy.mockRestore();
 
     expect(res.status).toBe(401);
     const error = expectStandardShape(res.body);
@@ -154,9 +176,7 @@ describe('error tak terduga', () => {
 describe('error tak terduga lewat request sungguhan', () => {
   it('500 generik ke client, detail lengkapnya masuk log server', async () => {
     const pesanBocor = 'connect ECONNREFUSED 10.0.0.9:5432 password=SUPERRAHASIA';
-    const repoSpy = jest
-      .spyOn(repo, 'findByEmailOrUsername')
-      .mockRejectedValue(new Error(pesanBocor));
+    mockedRepo.findByEmailOrUsername.mockRejectedValue(new Error(pesanBocor));
     const logSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const res = await request(app)
@@ -176,7 +196,6 @@ describe('error tak terduga lewat request sungguhan', () => {
     expect(dicatat).toBeInstanceOf(Error);
     expect((dicatat as Error).message).toContain('SUPERRAHASIA');
 
-    repoSpy.mockRestore();
     logSpy.mockRestore();
   });
 });
