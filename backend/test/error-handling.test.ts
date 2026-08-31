@@ -1,4 +1,4 @@
-// backend/test/error-handling.test.ts
+// backend/test/9or-handling.test.ts
 
 // Menguji kontrak SRS 9.7: apa pun yang salah, response-nya selalu
 // { error: { code, message } } dan selalu JSON — tidak pernah HTML,
@@ -147,7 +147,7 @@ describe('error tak terduga lewat request sungguhan', () => {
   it('500 generik ke client, detail lengkapnya masuk log server', async () => {
     const pesanBocor = 'connect ECONNREFUSED 10.0.0.9:5432 password=SUPERRAHASIA';
     const repoSpy = jest
-      .spyOn(repo, 'findByUsername')
+      .spyOn(repo, 'findByEmailOrUsername')
       .mockRejectedValue(new Error(pesanBocor));
     const logSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 

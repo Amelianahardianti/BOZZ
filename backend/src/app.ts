@@ -93,7 +93,7 @@ export function toErrorResponse(err: unknown): { status: number; body: ErrorResp
   //    bukan Error). Masih didukung supaya kode yang sudah ada tidak
   //    rusak, tapi untuk kode baru pakai helper di shared/errors.ts.
   if (isRecord(err) && typeof err.code === 'string' && typeof err.message === 'string') {
-    const status = typeof err.status === 'number' ? err.status : 400;
+    const status = typeof err.status === 'number' ? err.status : 500;
     if (status < 500) {
       return { status, body: { error: { code: err.code, message: err.message } } };
     }
