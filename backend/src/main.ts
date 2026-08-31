@@ -1,7 +1,7 @@
+// Wajib paling atas, sebelum import lain — beberapa modul (shared/db.ts,
+// dsb.) membaca process.env.* di top-level module scope, jadi butuh .env
+// sudah ke-load sebelum modul itu di-import sama sekali.
 import 'dotenv/config';
-
-console.log('DEBUG - DATABASE_URL:', process.env.DATABASE_URL);
-
 import { app } from './app';
 
 const PORT = process.env.PORT || 3000;
