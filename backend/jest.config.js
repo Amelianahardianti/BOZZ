@@ -5,12 +5,6 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/test'],
   testMatch: ['**/*.test.ts'],
-  // Test import app.ts langsung, bukan lewat main.ts -- jadi
-  // 'import dotenv/config' di main.ts tidak ikut kepanggil. Tanpa ini
-  // DATABASE_URL undefined pas jest jalan, dan test yang butuh koneksi
-  // DB beneran (mis. login) gagal bukan karena salah, tapi karena env
-  // kosong.
-  setupFiles: ['dotenv/config'],
   transform: {
     // tsconfig utama pakai module NodeNext (buat runtime Node), tapi Jest
     // jalan di CommonJS. Di-override khusus test biar ts-jest tidak
