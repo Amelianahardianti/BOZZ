@@ -5,30 +5,8 @@
 
 import request from 'supertest';
 import { app } from '../src/app';
-import * as authService from '../src/modules/auth-product/service';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function kasirToken(): Promise<string> {
-  await authService
-    .createStaff({
-      name: 'Kasir Produk',
-      username: 'kasir-produk',
-      password: 'kasir123',
-      role: 'kasir',
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined); // sudah dibuat test sebelumnya -- tidak apa-apa
-  return loginAs('kasir-produk', 'kasir123');
-}
+import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
+import { describe, expect, it, jest } from '@jest/globals';
 
 /** Bikin produk lewat API, kembalikan response-nya. */
 async function createProduct(token: string, overrides: Record<string, unknown> = {}) {
@@ -47,7 +25,7 @@ describe('GET /api/products', () => {
   });
 
   it('membalas bentuk paginated { data, page, limit, total } dengan default page 1 limit 20', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app).get('/api/products').set('Authorization', `Bearer ${token}`);
 
@@ -60,7 +38,7 @@ describe('GET /api/products', () => {
   });
 
   it('menempelkan category_name hasil JOIN ke categories', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app)
       .get('/api/products')
@@ -72,7 +50,7 @@ describe('GET /api/products', () => {
   });
 
   it('mencari berdasarkan potongan nama maupun SKU, tanpa peduli huruf besar/kecil', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const byName = await request(app)
       .get('/api/products')
@@ -88,7 +66,7 @@ describe('GET /api/products', () => {
   });
 
   it('memfilter berdasarkan category_id', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const minuman = await request(app)
       .get('/api/products')
       .query({ search: 'Teh Botol' })
@@ -107,7 +85,7 @@ describe('GET /api/products', () => {
   });
 
   it('memfilter berdasarkan is_active, termasuk is_active=false', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const created = await createProduct(token, { name: 'Produk Nonaktif', stock_qty: 0 });
     await request(app)
       .patch(`/api/products/${created.body.id}`)
@@ -128,7 +106,7 @@ describe('GET /api/products', () => {
   });
 
   it('memotong hasil per halaman tapi total tetap jumlah seluruh hasil filter', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const halaman1 = await request(app)
       .get('/api/products')
@@ -147,7 +125,7 @@ describe('GET /api/products', () => {
   });
 
   it('menolak limit di luar batas kontrak (1..100)', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .get('/api/products')
@@ -161,7 +139,7 @@ describe('GET /api/products', () => {
 
 describe('POST /api/products', () => {
   it('membuat produk baru dengan default low_stock_threshold 5', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await createProduct(token, { name: 'Kopi Sachet', sku: 'KPS-001', price: 2500 });
 
@@ -169,13 +147,13 @@ describe('POST /api/products', () => {
     expect(res.body.name).toBe('Kopi Sachet');
     expect(res.body.low_stock_threshold).toBe(5);
     expect(res.body.is_active).toBe(true);
-    expect(res.body.created_by).toBe('seed-owner-1');
+    expect(res.body.created_by).toBe(OWNER_ID);
     expect(res.body.category_id).toBeNull();
     expect(res.body.category_name).toBeNull();
   });
 
   it('menolak SKU yang sudah dipakai produk lain', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     await createProduct(token, { name: 'Produk SKU A', sku: 'DOBEL-01' });
 
     const res = await createProduct(token, { name: 'Produk SKU B', sku: 'dobel-01' });
@@ -185,7 +163,7 @@ describe('POST /api/products', () => {
   });
 
   it('menolak category_id yang tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await createProduct(token, { category_id: 'kategori-hantu' });
 
@@ -194,14 +172,14 @@ describe('POST /api/products', () => {
   });
 
   it('menolak harga minus dan harga lebih dari 2 angka di belakang koma', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     expect((await createProduct(token, { price: -1 })).status).toBe(400);
     expect((await createProduct(token, { price: 1000.555 })).status).toBe(400);
   });
 
   it('melarang role selain owner menambah produk', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await createProduct(token, { name: 'Produk Dari Kasir' });
 
@@ -212,7 +190,7 @@ describe('POST /api/products', () => {
 
 describe('GET /api/products/:id', () => {
   it('membalas detail produk lengkap dengan category_name', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app)
       .get('/api/products/seed-product-1')
@@ -224,7 +202,7 @@ describe('GET /api/products/:id', () => {
   });
 
   it('membalas 404 kalau produknya tidak ada', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app)
       .get('/api/products/produk-hantu')
@@ -237,7 +215,7 @@ describe('GET /api/products/:id', () => {
 
 describe('PATCH /api/products/:id', () => {
   it('mengubah sebagian field dan membiarkan sisanya', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const created = await createProduct(token, { name: 'Sebelum Diubah', price: 1000, unit: 'pcs' });
 
     const res = await request(app)
@@ -253,7 +231,7 @@ describe('PATCH /api/products/:id', () => {
   });
 
   it('menolak perubahan stok lewat endpoint ini', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .patch('/api/products/seed-product-1')
@@ -272,7 +250,7 @@ describe('PATCH /api/products/:id', () => {
   });
 
   it('menolak body kosong', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .patch('/api/products/seed-product-1')
@@ -284,7 +262,7 @@ describe('PATCH /api/products/:id', () => {
   });
 
   it('membalas 404 kalau produknya tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .patch('/api/products/produk-hantu')
@@ -296,7 +274,7 @@ describe('PATCH /api/products/:id', () => {
   });
 
   it('membiarkan produk memakai SKU-nya sendiri, tapi menolak SKU milik produk lain', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const a = await createProduct(token, { name: 'Produk Patch A', sku: 'PATCH-A' });
     const b = await createProduct(token, { name: 'Produk Patch B', sku: 'PATCH-B' });
 
@@ -315,7 +293,7 @@ describe('PATCH /api/products/:id', () => {
   });
 
   it('melarang role selain owner mengubah produk', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app)
       .patch('/api/products/seed-product-1')

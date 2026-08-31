@@ -6,30 +6,8 @@
 import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { app } from '../src/app';
-import * as authService from '../src/modules/auth-product/service';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function kasirToken(): Promise<string> {
-  await authService
-    .createStaff({
-      name: 'Kasir Import',
-      username: 'kasir-import',
-      password: 'kasir123',
-      role: 'kasir',
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined);
-  return loginAs('kasir-import', 'kasir123');
-}
+import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
+import { describe, expect, it, jest } from '@jest/globals';
 
 /** Rakit file .xlsx beneran di memori, biar yang diuji parser aslinya. */
 async function buildWorkbook(rows: unknown[][]): Promise<Buffer> {
@@ -68,7 +46,7 @@ const HEADER = ['Nama Produk', 'SKU', 'Kategori', 'Harga', 'Stok', 'Stok Minim',
 
 describe('POST /api/products/import', () => {
   it('membalas 202 dengan job_id, tidak menunggu prosesnya selesai', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([HEADER, ['Impor Cepat', 'IMP-CEPAT', 'Makanan', 9000, 3, 2, 'pcs']]);
 
     const res = await request(app)
@@ -82,7 +60,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('membuat produk baru dari isi file', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([
       HEADER,
       ['Kecap Manis', 'KCP-001', 'Makanan', 18500, 12, 4, 'botol'],
@@ -120,7 +98,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('memperbarui produk yang SKU-nya sudah ada, bukan bikin dobel', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     await importAndWait(
       token,
       await buildWorkbook([HEADER, ['Nama Lama', 'UPD-001', '', 1000, 5, 2, 'pcs']])
@@ -145,7 +123,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('tidak menimpa stok produk lama, tapi memberi tahu lewat warnings', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     await importAndWait(
       token,
       await buildWorkbook([HEADER, ['Stok Dijaga', 'STK-001', '', 1000, 7, 2, 'pcs']])
@@ -169,7 +147,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('meloloskan baris yang benar dan melaporkan nomor baris yang salah', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([
       HEADER,
       ['Baris Benar', 'OK-001', 'Makanan', 5000, 2, 1, 'pcs'], // baris 2
@@ -204,7 +182,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('mengabaikan baris kosong dan mengenali nama kolom versi Inggris', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([
       ['Name', 'SKU', 'Price', 'Stock'],
       ['Produk Inggris', 'ENG-001', 4000, 6],
@@ -220,7 +198,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('menggagalkan seluruh job kalau kolom wajib tidak ada di file', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([
       ['Kolom', 'Yang', 'Aneh'],
       ['a', 'b', 'c'],
@@ -234,7 +212,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('menggagalkan job kalau isi filenya bukan xlsx beneran', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const laporan = await importAndWait(token, Buffer.from('ini cuma teks biasa'), 'palsu.xlsx');
 
@@ -243,7 +221,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('menolak file berekstensi .xls dengan saran menyimpan ulang', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([HEADER, ['Produk Xls', 'XLS-001', '', 1000, 1, 1, 'pcs']]);
 
     const res = await request(app)
@@ -257,7 +235,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('menolak request tanpa file', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .post('/api/products/import')
@@ -268,7 +246,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('menolak file yang dikirim di nama field yang salah', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const file = await buildWorkbook([HEADER]);
 
     const res = await request(app)
@@ -281,7 +259,7 @@ describe('POST /api/products/import', () => {
   });
 
   it('melarang role selain owner mengimpor produk', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
     const file = await buildWorkbook([HEADER, ['Dari Kasir', 'KSR-001', '', 1000, 1, 1, 'pcs']]);
 
     const res = await request(app)
@@ -303,7 +281,7 @@ describe('POST /api/products/import', () => {
 
 describe('GET /api/products/import/:jobId', () => {
   it('membalas 404 kalau job-nya tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .get('/api/products/import/job-hantu')

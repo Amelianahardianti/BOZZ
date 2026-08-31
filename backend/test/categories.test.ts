@@ -4,29 +4,8 @@
 
 import request from 'supertest';
 import { app } from '../src/app';
-import * as authService from '../src/modules/auth-product/service';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-/** Bikin akun kasir sekali saja, dipakai buat nguji pembatasan role. */
-async function kasirToken(): Promise<string> {
-  const ownerToken = await loginAs('owner', 'owner123');
-  expect(ownerToken).toBeTruthy();
-  await authService
-    .createStaff({
-      name: 'Kasir Uji',
-      username: 'kasir-kategori',
-      password: 'kasir123',
-      role: 'kasir',
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined); // sudah ada dari test sebelumnya -- tidak apa-apa
-  return loginAs('kasir-kategori', 'kasir123');
-}
+import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
+import { describe, expect, it, jest } from '@jest/globals';
 
 describe('GET /api/categories', () => {
   it('menolak request tanpa token', async () => {
@@ -37,7 +16,7 @@ describe('GET /api/categories', () => {
   });
 
   it('membalas array kategori terurut A-Z untuk user yang sudah login', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app).get('/api/categories').set('Authorization', `Bearer ${token}`);
 
@@ -53,7 +32,7 @@ describe('GET /api/categories', () => {
 
 describe('POST /api/categories', () => {
   it('membuat kategori baru dan mencatat pembuatnya', async () => {
-    const token = await loginAs('owner', 'owner123');
+    const token = ownerToken();
 
     const res = await request(app)
       .post('/api/categories')
@@ -62,7 +41,7 @@ describe('POST /api/categories', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('Snack Kering'); // spasi berlebih dirapikan
-    expect(res.body.created_by).toBe('seed-owner-1');
+    expect(res.body.created_by).toBe(OWNER_ID);
     expect(res.body.id).toBeTruthy();
 
     // kategori baru ikut muncul di daftar
@@ -71,7 +50,7 @@ describe('POST /api/categories', () => {
   });
 
   it('menolak nama yang sudah dipakai, walau beda huruf besar/kecil', async () => {
-    const token = await loginAs('owner', 'owner123');
+    const token = ownerToken();
 
     const res = await request(app)
       .post('/api/categories')
@@ -83,7 +62,7 @@ describe('POST /api/categories', () => {
   });
 
   it('menolak nama kosong / cuma spasi', async () => {
-    const token = await loginAs('owner', 'owner123');
+    const token = ownerToken();
 
     const res = await request(app)
       .post('/api/categories')
@@ -95,7 +74,7 @@ describe('POST /api/categories', () => {
   });
 
   it('melarang role selain owner menambah kategori', async () => {
-    const token = await kasirToken();
+    const token = kasirToken();
 
     const res = await request(app)
       .post('/api/categories')

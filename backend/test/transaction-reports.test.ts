@@ -6,31 +6,8 @@
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { app } from '../src/app';
-import * as authService from '../src/modules/auth-product/service';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function staffToken(role: 'kasir' | 'pengepak'): Promise<string> {
-  const username = `${role}-laporan`;
-  await authService
-    .createStaff({
-      name: `Staf ${role}`,
-      username,
-      password: 'staf12345',
-      role,
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined);
-  return loginAs(username, 'staf12345');
-}
+import { OWNER_ID, ownerToken, staffToken } from './helpers/auth';
+import { describe, expect, it, jest } from '@jest/globals';
 
 async function seedProduct(token: string, stockQty = 50, price = 10000): Promise<string> {
   const res = await request(app)
@@ -72,13 +49,13 @@ describe('GET /api/transactions', () => {
     const tanpaToken = await request(app).get('/api/transactions');
     expect(tanpaToken.status).toBe(401);
 
-    const pengepak = await listTransactions(await staffToken('pengepak'));
+    const pengepak = await listTransactions(staffToken('pengepak'));
     expect(pengepak.status).toBe(403);
     expect(pengepak.body.error.code).toBe('FORBIDDEN');
   });
 
   it('membalas bentuk paginated { data, page, limit, total } dengan default page 1 limit 20', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     await checkout(token, await seedProduct(token));
 
     const res = await listTransactions(token);
@@ -91,7 +68,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('mengurutkan dari transaksi terbaru dan tidak membocorkan field internal', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token);
 
     const lama = await checkout(token, productId);
@@ -106,7 +83,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('memfilter berdasarkan payment_method', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token);
 
     const tunai = await checkout(token, productId, {
@@ -125,7 +102,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('memfilter berdasarkan customer_type: ada pelanggan = marketplace, tanpa = walk_in', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token);
     const customerId = randomUUID();
 
@@ -152,7 +129,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('memfilter rentang tanggal, termasuk transaksi hari ini di batas atas', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const baru = await checkout(token, await seedProduct(token));
 
     const hariIni = new Date();
@@ -179,7 +156,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('menolak format tanggal yang salah dan rentang terbalik', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const formatSalah = await listTransactions(token, { date_from: '31-08-2026' });
     expect(formatSalah.status).toBe(400);
@@ -194,7 +171,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('menolak payment_method & customer_type di luar daftar, dan limit di luar 1..100', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     expect((await listTransactions(token, { payment_method: 'qris' })).status).toBe(400);
     expect((await listTransactions(token, { customer_type: 'pre_order' })).status).toBe(400);
@@ -203,7 +180,7 @@ describe('GET /api/transactions', () => {
   });
 
   it('memotong hasil per halaman, total tetap jumlah seluruh hasil filter', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token);
     await checkout(token, productId);
     await checkout(token, productId);
@@ -221,9 +198,9 @@ describe('GET /api/transactions', () => {
 
 describe('GET /api/transactions/:id', () => {
   it('membalas data lengkap untuk struk', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const productId = await seedProduct(owner, 10, 12500);
-    const kasir = await staffToken('kasir');
+    const kasir = staffToken('kasir');
 
     const dibuat = await request(app)
       .post('/api/transactions')
@@ -255,7 +232,7 @@ describe('GET /api/transactions/:id', () => {
   });
 
   it('struk lama tetap memakai harga saat transaksi walau harga produk berubah', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const productId = await seedProduct(owner, 10, 3000);
     const dibuat = await checkout(owner, productId);
 
@@ -274,7 +251,7 @@ describe('GET /api/transactions/:id', () => {
   });
 
   it('membalas 404 kalau transaksinya tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await request(app)
       .get('/api/transactions/transaksi-hantu')
@@ -285,7 +262,7 @@ describe('GET /api/transactions/:id', () => {
   });
 
   it('menolak request tanpa token dan melarang pengepak', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const dibuat = await checkout(owner, await seedProduct(owner));
 
     const tanpaToken = await request(app).get(`/api/transactions/${dibuat.id}`);
@@ -293,7 +270,7 @@ describe('GET /api/transactions/:id', () => {
 
     const pengepak = await request(app)
       .get(`/api/transactions/${dibuat.id}`)
-      .set('Authorization', `Bearer ${await staffToken('pengepak')}`);
+      .set('Authorization', `Bearer ${staffToken('pengepak')}`);
     expect(pengepak.status).toBe(403);
   });
 });

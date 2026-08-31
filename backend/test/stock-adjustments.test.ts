@@ -7,31 +7,9 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { app } from '../src/app';
 import * as repo from '../src/modules/sales-inventory/repository';
-import * as authService from '../src/modules/auth-product/service';
+import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
 import { EVENTS, StockUpdatedPayload, subscribe } from '../src/shared/event-bus';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function kasirToken(): Promise<string> {
-  await authService
-    .createStaff({
-      name: 'Kasir Stok',
-      username: 'kasir-stok',
-      password: 'kasir123',
-      role: 'kasir',
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined);
-  return loginAs('kasir-stok', 'kasir123');
-}
+import { describe, expect, it, jest } from '@jest/globals';
 
 async function seedProduct(token: string, stockQty: number): Promise<string> {
   const res = await request(app)
@@ -58,7 +36,7 @@ function adjust(token: string, productId: string, body: Record<string, unknown>)
 
 describe('POST /api/products/:id/stock-adjustments', () => {
   it('menambah stok dan mencatatnya di log', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
 
     const res = await adjust(token, productId, { change_qty: 5, reason: 'restock' });
@@ -83,7 +61,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
     expect(res.body.stock_after).toBe(15);
     expect(res.body.reference_type).toBe('manual');
     expect(res.body.reference_id).toBeNull();
-    expect(res.body.adjusted_by_user_id).toBe('seed-owner-1');
+    expect(res.body.adjusted_by_user_id).toBe(OWNER_ID);
 
     expect(await stockOf(token, productId)).toBe(15);
 
@@ -93,7 +71,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('mengurangi stok kalau change_qty negatif', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
 
     const res = await adjust(token, productId, { change_qty: -4, reason: 'manual_adjustment' });
@@ -105,7 +83,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('boleh mengosongkan stok sampai tepat 0', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 3);
 
     const res = await adjust(token, productId, { change_qty: -3, reason: 'manual_adjustment' });
@@ -115,7 +93,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('mempublikasikan event stock.updated setelah tercatat', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 8);
 
     const diterima: StockUpdatedPayload[] = [];
@@ -138,7 +116,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('menolak kalau stok jadi minus, tanpa mengubah stok atau menulis log', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 2);
 
     const res = await adjust(token, productId, { change_qty: -5, reason: 'manual_adjustment' });
@@ -151,7 +129,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('membalas 404 kalau produknya tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await adjust(token, 'produk-hantu', { change_qty: 1, reason: 'restock' });
 
@@ -160,7 +138,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('menolak change_qty 0 dan yang bukan bilangan bulat', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
 
     for (const change_qty of [0, 1.5]) {
@@ -172,7 +150,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('menolak alasan yang dicatat sistem sendiri (sale, void_reversal, external_order)', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
 
     for (const reason of ['sale', 'void_reversal', 'external_order', 'apa_saja']) {
@@ -184,7 +162,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('menolak body tanpa change_qty atau tanpa reason', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
 
     expect((await adjust(token, productId, { reason: 'restock' })).status).toBe(400);
@@ -192,9 +170,9 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('melarang role selain owner menyesuaikan stok', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const productId = await seedProduct(owner, 5);
-    const kasir = await kasirToken();
+    const kasir = kasirToken();
 
     const res = await adjust(kasir, productId, { change_qty: 1, reason: 'restock' });
 
@@ -203,7 +181,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('menolak request tanpa token', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const productId = await seedProduct(owner, 5);
 
     const res = await request(app)
@@ -215,7 +193,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('mencatat tiap penyesuaian berurutan, stock_before menyambung ke yang sebelumnya', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
 
     await adjust(token, productId, { change_qty: 5, reason: 'restock' });
@@ -230,7 +208,7 @@ describe('POST /api/products/:id/stock-adjustments', () => {
   });
 
   it('tidak bentrok dengan checkout yang jalan bersamaan', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 1);
 
     // Checkout membeli barang terakhir, di saat yang sama stok dikurangi

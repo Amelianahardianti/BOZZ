@@ -7,31 +7,9 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { app } from '../src/app';
 import * as repo from '../src/modules/sales-inventory/repository';
-import * as authService from '../src/modules/auth-product/service';
+import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
 import { EVENTS, StockUpdatedPayload, subscribe } from '../src/shared/event-bus';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function kasirToken(): Promise<string> {
-  await authService
-    .createStaff({
-      name: 'Kasir Void',
-      username: 'kasir-void',
-      password: 'kasir123',
-      role: 'kasir',
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined);
-  return loginAs('kasir-void', 'kasir123');
-}
+import { describe, expect, it, jest } from '@jest/globals';
 
 async function seedProduct(token: string, stockQty = 20, price = 10000): Promise<string> {
   const res = await request(app)
@@ -71,7 +49,7 @@ function voidTransaction(token: string, id: string, body?: Record<string, unknow
 
 describe('PATCH /api/transactions/:id/void', () => {
   it('membatalkan transaksi dan mencatat siapa, kapan, dan alasannya', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 2 }]);
 
@@ -80,7 +58,7 @@ describe('PATCH /api/transactions/:id/void', () => {
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(transaksi.id);
     expect(res.body.status).toBe('voided');
-    expect(res.body.voided_by).toBe('seed-owner-1');
+    expect(res.body.voided_by).toBe(OWNER_ID);
     expect(res.body.void_reason).toBe('Salah input barang');
     expect(res.body.voided_at).toBeTruthy();
     expect(res.body.request_fingerprint).toBeUndefined();
@@ -90,7 +68,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('mengembalikan stok setiap item ke jumlah semula', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const a = await seedProduct(token, 10);
     const b = await seedProduct(token, 5);
 
@@ -108,7 +86,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('mencatat pengembalian stok di log dengan reason void_reversal', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 8);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 3 }]);
 
@@ -128,11 +106,11 @@ describe('PATCH /api/transactions/:id/void', () => {
     expect(pembatalan.stock_after).toBe(8);
     expect(pembatalan.reference_type).toBe('transaction');
     expect(pembatalan.reference_id).toBe(transaksi.id);
-    expect(pembatalan.adjusted_by_user_id).toBe('seed-owner-1');
+    expect(pembatalan.adjusted_by_user_id).toBe(OWNER_ID);
   });
 
   it('mempublikasikan stock.updated untuk tiap item yang stoknya kembali', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 6);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 2 }]);
 
@@ -155,7 +133,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('menerima request tanpa body, void_reason jadi null', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 1 }]);
 
@@ -166,7 +144,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('menganggap alasan berisi spasi saja sama dengan tidak diisi', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 1 }]);
 
@@ -177,7 +155,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('menolak pembatalan kedua, stok tidak dikembalikan dua kali', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 4 }]);
 
@@ -193,7 +171,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('dua pembatalan yang dikirim bersamaan: satu berhasil, satu 409', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 10);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 2 }]);
 
@@ -207,7 +185,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('membalas 404 kalau transaksinya tidak ada', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const res = await voidTransaction(token, 'transaksi-hantu', { void_reason: 'apa saja' });
 
@@ -216,7 +194,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('menolak void_reason yang kepanjangan', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 1 }]);
 
@@ -228,11 +206,11 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('melarang kasir membatalkan transaksi, dan menolak request tanpa token', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const productId = await seedProduct(owner, 5);
     const transaksi = await checkout(owner, [{ product_id: productId, qty: 1 }]);
 
-    const kasir = await voidTransaction(await kasirToken(), transaksi.id);
+    const kasir = await voidTransaction(kasirToken(), transaksi.id);
     expect(kasir.status).toBe(403);
     expect(kasir.body.error.code).toBe('FORBIDDEN');
 
@@ -243,7 +221,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('transaksi yang dibatalkan tetap muncul di laporan dengan status voided', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 5);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 1 }]);
     await voidTransaction(token, transaksi.id, { void_reason: 'Pembeli batal' });
@@ -264,7 +242,7 @@ describe('PATCH /api/transactions/:id/void', () => {
   });
 
   it('barang yang stoknya sudah kembali bisa langsung dijual lagi', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const productId = await seedProduct(token, 1);
     const transaksi = await checkout(token, [{ product_id: productId, qty: 1 }]);
 

@@ -6,32 +6,9 @@
 import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { app } from '../src/app';
-import * as authService from '../src/modules/auth-product/service';
+import { OWNER_ID, ownerToken, staffToken } from './helpers/auth';
 import { EVENTS, StockUpdatedPayload, subscribe } from '../src/shared/event-bus';
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
-}
-
-async function ownerToken(): Promise<string> {
-  return loginAs('owner', 'owner123');
-}
-
-async function staffToken(role: 'kasir' | 'pengepak'): Promise<string> {
-  const username = `${role}-transaksi`;
-  await authService
-    .createStaff({
-      name: `Staf ${role}`,
-      username,
-      password: 'staf12345',
-      role,
-      createdByUserId: 'seed-owner-1',
-    })
-    .catch(() => undefined);
-  return loginAs(username, 'staf12345');
-}
+import { describe, expect, it, jest } from '@jest/globals';
 
 /** Bikin produk khusus buat satu test, biar test tidak saling ganggu. */
 async function seedProduct(
@@ -74,8 +51,8 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('melarang pengepak melakukan checkout', async () => {
-    const token = await staffToken('pengepak');
-    const owner = await ownerToken();
+    const token = staffToken('pengepak');
+    const owner = ownerToken();
     const produk = await seedProduct(owner);
 
     const res = await checkout(token, randomUUID(), {
@@ -89,8 +66,8 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('mencatat transaksi lengkap dengan snapshot nama & harga produk', async () => {
-    const owner = await ownerToken();
-    const kasir = await staffToken('kasir');
+    const owner = ownerToken();
+    const kasir = staffToken('kasir');
     const produk = await seedProduct(owner, { name: 'Produk Snapshot', price: 12500, stock_qty: 4 });
 
     const res = await checkout(kasir, randomUUID(), {
@@ -130,7 +107,7 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('menerima tipe pre_order', async () => {
-    const owner = await ownerToken();
+    const owner = ownerToken();
     const produk = await seedProduct(owner);
 
     const res = await checkout(owner, randomUUID(), {
@@ -144,7 +121,7 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('menolak type & payment_method di luar daftar, serta keranjang kosong', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
     const item = [{ product_id: produk.id, qty: 1 }];
 
@@ -173,7 +150,7 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('menolak qty nol/minus/pecahan', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
 
     for (const qty of [0, -1, 1.5]) {
@@ -187,7 +164,7 @@ describe('POST /api/transactions — dasar', () => {
   });
 
   it('menolak produk yang tidak ada atau sudah tidak aktif', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     const hantu = await checkout(token, randomUUID(), {
       type: 'walk_in',
@@ -214,7 +191,7 @@ describe('POST /api/transactions — dasar', () => {
 
 describe('POST /api/transactions — Idempotency-Key', () => {
   it('menolak request tanpa header Idempotency-Key', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
 
     const res = await request(app)
@@ -232,7 +209,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
   });
 
   it('menolak Idempotency-Key yang bukan UUID', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
 
     const res = await checkout(token, 'bukan-uuid', {
@@ -246,7 +223,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
   });
 
   it('request yang sama diulang mengembalikan transaksi yang sama, stok cuma kepotong sekali', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 10 });
     const key = randomUUID();
     const body = {
@@ -266,7 +243,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
   });
 
   it('menganggap sama walau urutan item di keranjang berbeda', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const a = await seedProduct(token, { stock_qty: 10 });
     const b = await seedProduct(token, { stock_qty: 10 });
     const key = randomUUID();
@@ -293,7 +270,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
   });
 
   it('menolak key yang sama dipakai untuk isi transaksi yang berbeda', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 10 });
     const key = randomUUID();
 
@@ -314,7 +291,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
   });
 
   it('dua request kembar yang dikirim bersamaan tetap jadi satu transaksi', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 10 });
     const key = randomUUID();
     const body = {
@@ -334,7 +311,7 @@ describe('POST /api/transactions — Idempotency-Key', () => {
 
 describe('POST /api/transactions — pembayaran & kembalian', () => {
   it('menghitung kembalian untuk pembayaran tunai', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { price: 12500, stock_qty: 5 });
 
     const res = await checkout(token, randomUUID(), {
@@ -351,7 +328,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('kembalian 0 kalau uangnya pas', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { price: 7500, stock_qty: 5 });
 
     const res = await checkout(token, randomUUID(), {
@@ -365,7 +342,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('menghitung kembalian dengan pecahan sen tanpa meleset', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { price: 0.1, stock_qty: 10 });
 
     const res = await checkout(token, randomUUID(), {
@@ -380,7 +357,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('menolak pembayaran tunai tanpa amount_paid', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
 
     const res = await checkout(token, randomUUID(), {
@@ -394,7 +371,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('menolak kalau uang yang dibayarkan kurang dari total', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { price: 10000, stock_qty: 5 });
 
     const res = await checkout(token, randomUUID(), {
@@ -410,7 +387,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('transfer & e-wallet: amount_paid dan change_amount null', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
 
     for (const metode of ['transfer', 'ewallet']) {
       const produk = await seedProduct(token, { price: 8000, stock_qty: 3 });
@@ -428,7 +405,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
   });
 
   it('menolak amount_paid untuk metode non-tunai', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token);
 
     const res = await checkout(token, randomUUID(), {
@@ -445,7 +422,7 @@ describe('POST /api/transactions — pembayaran & kembalian', () => {
 
 describe('POST /api/transactions — stok', () => {
   it('memotong stok setiap produk sesuai qty', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const a = await seedProduct(token, { stock_qty: 10 });
     const b = await seedProduct(token, { stock_qty: 4 });
 
@@ -463,7 +440,7 @@ describe('POST /api/transactions — stok', () => {
   });
 
   it('membalas 409 kalau stok tidak cukup, tanpa mengubah stok apa pun', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const cukup = await seedProduct(token, { stock_qty: 10 });
     const kurang = await seedProduct(token, { stock_qty: 1 });
 
@@ -487,7 +464,7 @@ describe('POST /api/transactions — stok', () => {
   });
 
   it('menjumlahkan qty produk yang sama walau dikirim sebagai dua baris', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { price: 1000, stock_qty: 5 });
 
     const res = await checkout(token, randomUUID(), {
@@ -507,7 +484,7 @@ describe('POST /api/transactions — stok', () => {
   });
 
   it('menolak kalau total qty gabungan melebihi stok', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 4 });
 
     const res = await checkout(token, randomUUID(), {
@@ -524,7 +501,7 @@ describe('POST /api/transactions — stok', () => {
   });
 
   it('dua checkout barengan untuk barang terakhir: satu sukses, satu 409', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 1 });
     const body = {
       type: 'walk_in',
@@ -543,7 +520,7 @@ describe('POST /api/transactions — stok', () => {
   });
 
   it('mempublikasikan event stock.updated untuk tiap produk yang terjual', async () => {
-    const token = await ownerToken();
+    const token = ownerToken();
     const produk = await seedProduct(token, { stock_qty: 6 });
 
     const diterima: StockUpdatedPayload[] = [];
