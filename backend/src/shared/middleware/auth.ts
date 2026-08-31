@@ -8,9 +8,14 @@
 //
 //   import { requireAuth, requireRole } from '../../shared/middleware/auth';
 //   router.post('/products', requireAuth, requireRole('owner'), handler);
+//
+// Catatan: middleware ini tidak menyusun response error sendiri. Dia
+// cuma next(error), lalu error handler pusat di app.ts yang merakit
+// bentuk { error: { code, message } }-nya (SRS 9.7).
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { forbidden, unauthorized } from '../errors';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-ganti-di-production';
 
@@ -23,13 +28,11 @@ export interface AuthenticatedRequest extends Request {
 }
 
 // Langkah 1: cek ada token yang valid atau tidak (user sudah login apa belum).
-export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export function requireAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Harus login dulu.' },
-    });
+    return next(unauthorized('Harus login dulu.'));
   }
 
   const token = header.slice('Bearer '.length);
@@ -39,9 +42,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
     req.user = { id: payload.sub, role: payload.role };
     next();
   } catch {
-    return res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Sesi login tidak valid atau sudah habis.' },
-    });
+    return next(unauthorized('Sesi login tidak valid atau sudah habis.'));
   }
 }
 
@@ -49,17 +50,13 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
 // sesuai atau tidak. Contoh: requireRole('owner') artinya cuma Owner
 // yang boleh lewat.
 export function requireRole(...allowedRoles: Role[]) {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  return (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({
-        error: { code: 'UNAUTHORIZED', message: 'Harus login dulu.' },
-      });
+      return next(unauthorized('Harus login dulu.'));
     }
 
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'Kamu tidak punya akses ke halaman/fitur ini.' },
-      });
+      return next(forbidden('Kamu tidak punya akses ke halaman/fitur ini.'));
     }
 
     next();

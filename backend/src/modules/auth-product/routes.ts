@@ -5,20 +5,13 @@
 // apa nggak (pakai zod), lempar ke service.ts buat diproses, lalu
 // balikin hasilnya. Logic beneran ada di service.ts, bukan di sini.
 
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import * as service from './service';
+import { asyncHandler } from '../../shared/errors';
 import { requireAuth, requireRole, AuthenticatedRequest } from '../../shared/middleware/auth';
 
 export const router = Router();
-
-// Helper kecil: bungkus function async supaya errornya otomatis
-// ketangkep sama error handler pusat di app.ts (SRS 9.7).
-function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res, next).catch(next);
-  };
-}
 
 // ---------- POST /api/auth/login ----------
 const loginSchema = z.object({
