@@ -1,65 +1,88 @@
 // backend/src/modules/auth-product/repository.ts
 
-// Semua fungsi di sini cuma "ngobrol" sama internal/store.ts.
-// service.ts tidak boleh langsung nyentuh internal/store.ts, harus
-// lewat fungsi-fungsi yang disediakan di sini. Tujuannya: kalau nanti
-// store.ts diganti jadi query database asli, service.ts tidak perlu diubah.
+// Semua query pakai parameter binding ($1, $2, dst), BUKAN nyambung
+// string manual -- ini wajib buat mencegah SQL Injection (SRS 10.6).
 
-import { users, nextId, User, Role } from './internal/store';
+import { pool } from '../../shared/db';
 
-export async function findByUsername(value: string): Promise<User | null> {
-  return users.find((u) => u.username === value) ?? null;
+export type Role = 'owner' | 'kasir' | 'pengepak';
+
+export interface User {
+  id: string;
+  name: string;
+  email_or_username: string;
+  password_hash: string;
+  role: Role;
+  phone: string | null;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function findByEmailOrUsername(value: string): Promise<User | null> {
+  const result = await pool.query<User>(
+    'SELECT * FROM users WHERE email_or_username = $1',
+    [value]
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function findById(id: string): Promise<User | null> {
-  return users.find((u) => u.id === id) ?? null;
+  const result = await pool.query<User>('SELECT * FROM users WHERE id = $1', [id]);
+  return result.rows[0] ?? null;
 }
 
 export async function listStaff(): Promise<User[]> {
-  // Owner biasanya tidak ikut ditampilkan di daftar "staff" biasa,
-  // tapi ini disederhanakan dulu -- tampilkan semua.
-  return users;
+  const result = await pool.query<User>('SELECT * FROM users ORDER BY created_at ASC');
+  return result.rows;
 }
 
 export async function createUser(input: {
   name: string;
-  username: string;
+  email_or_username: string;
   password_hash: string;
   role: Role;
   phone?: string | null;
   created_by: string;
 }): Promise<User> {
-  const now = new Date().toISOString();
-  const newUser: User = {
-    id: nextId(),
-    name: input.name,
-    username: input.username,
-    password_hash: input.password_hash,
-    role: input.role,
-    phone: input.phone ?? null,
-    is_active: true,
-    created_by: input.created_by,
-    created_at: now,
-    updated_at: now,
-  };
-  users.push(newUser);
-  return newUser;
+  const result = await pool.query<User>(
+    `INSERT INTO users (name, email_or_username, password_hash, role, phone, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [input.name, input.email_or_username, input.password_hash, input.role, input.phone ?? null, input.created_by]
+  );
+  return result.rows[0];
 }
 
 export async function updateUser(
   id: string,
-  changes: Partial<Pick<User, 'name' | 'username' | 'role' | 'phone'>>
+  changes: Partial<Pick<User, 'name' | 'email_or_username' | 'role' | 'phone'>>
 ): Promise<User | null> {
-  const user = users.find((u) => u.id === id);
-  if (!user) return null;
-  Object.assign(user, changes, { updated_at: new Date().toISOString() });
-  return user;
+  // Bangun query UPDATE secara dinamis, tapi tetap pakai parameter
+  // binding ($1, $2, dst) -- BUKAN nempel langsung nilai user ke string.
+  const fields = Object.keys(changes) as (keyof typeof changes)[];
+  if (fields.length === 0) {
+    return findById(id);
+  }
+
+  const setClauses = fields.map((field, i) => `${field} = $${i + 1}`);
+  const values = fields.map((field) => changes[field]);
+
+  const result = await pool.query<User>(
+    `UPDATE users
+     SET ${setClauses.join(', ')}, updated_at = now()
+     WHERE id = $${fields.length + 1}
+     RETURNING *`,
+    [...values, id]
+  );
+  return result.rows[0] ?? null;
 }
 
 export async function deactivateUser(id: string): Promise<User | null> {
-  const user = users.find((u) => u.id === id);
-  if (!user) return null;
-  user.is_active = false;
-  user.updated_at = new Date().toISOString();
-  return user;
+  const result = await pool.query<User>(
+    `UPDATE users SET is_active = false, updated_at = now() WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return result.rows[0] ?? null;
 }

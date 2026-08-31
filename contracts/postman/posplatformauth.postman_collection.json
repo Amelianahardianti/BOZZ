@@ -34,7 +34,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"owner\",\n  \"password\": \"owner123\"\n}"
+              "raw": "{\n  \"email_or_username\": \"owner\",\n  \"password\": \"owner123\"\n}"
             },
             "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
           }
@@ -57,7 +57,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"owner\",\n  \"password\": \"password-yang-salah\"\n}"
+              "raw": "{\n  \"email_or_username\": \"owner\",\n  \"password\": \"password-yang-salah\"\n}"
             },
             "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
           }
@@ -79,7 +79,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"tidak-ada-orangnya\",\n  \"password\": \"apapun123\"\n}"
+              "raw": "{\n  \"email_or_username\": \"tidak-ada-orangnya\",\n  \"password\": \"apapun123\"\n}"
             },
             "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
           }
@@ -210,7 +210,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Budi Kasir\",\n  \"username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\",\n  \"phone\": \"08123456789\"\n}"
+              "raw": "{\n  \"name\": \"Budi Kasir\",\n  \"email_or_username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\",\n  \"phone\": \"08123456789\"\n}"
             },
             "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
           }
@@ -235,7 +235,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Budi Duplikat\",\n  \"username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\"\n}"
+              "raw": "{\n  \"name\": \"Budi Duplikat\",\n  \"email_or_username\": \"budi\",\n  \"password\": \"budi123\",\n  \"role\": \"kasir\"\n}"
             },
             "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
           }
@@ -260,7 +260,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Owner Kedua\",\n  \"username\": \"owner2\",\n  \"password\": \"owner123\",\n  \"role\": \"owner\"\n}"
+              "raw": "{\n  \"name\": \"Owner Kedua\",\n  \"email_or_username\": \"owner2\",\n  \"password\": \"owner123\",\n  \"role\": \"owner\"\n}"
             },
             "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
           }
@@ -285,7 +285,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Test Pendek\",\n  \"username\": \"testpendek\",\n  \"password\": \"123\",\n  \"role\": \"kasir\"\n}"
+              "raw": "{\n  \"name\": \"Test Pendek\",\n  \"email_or_username\": \"testpendek\",\n  \"password\": \"123\",\n  \"role\": \"kasir\"\n}"
             },
             "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
           }
@@ -358,7 +358,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"budi\",\n  \"password\": \"budi123\"\n}"
+              "raw": "{\n  \"email_or_username\": \"budi\",\n  \"password\": \"budi123\"\n}"
             },
             "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
           }
@@ -403,7 +403,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"budi\",\n  \"password\": \"budi123\"\n}"
+              "raw": "{\n  \"email_or_username\": \"budi\",\n  \"password\": \"budi123\"\n}"
             },
             "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
           }
@@ -453,7 +453,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Nyoba Bikin Staff\",\n  \"username\": \"nyoba\",\n  \"password\": \"nyoba123\",\n  \"role\": \"kasir\"\n}"
+              "raw": "{\n  \"name\": \"Nyoba Bikin Staff\",\n  \"email_or_username\": \"nyoba\",\n  \"password\": \"nyoba123\",\n  \"role\": \"kasir\"\n}"
             },
             "url": { "raw": "{{base_url}}/staff", "host": ["{{base_url}}"], "path": ["staff"] }
           }
