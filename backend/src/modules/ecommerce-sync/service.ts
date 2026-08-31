@@ -12,6 +12,7 @@ import { publish, subscribe, EVENTS } from '../../shared/event-bus';
 import type { NormalizedOrder } from './types';
 
 const SYNC_LOOKBACK_SECONDS = 15 * 24 * 60 * 60; // ponytail: window tetap 15 hari, jadikan configurable kalau perlu backfill lebih dalam
+type PlatformRow = NonNullable<Awaited<ReturnType<typeof repo.findPlatformRow>>>;
 
 // ---------------------------------------------------------------------
 // Platforms
@@ -45,7 +46,7 @@ function toPlatformDto(row: Awaited<ReturnType<typeof repo.findPlatformRow>>, pl
 export async function listPlatforms() {
   const known = Object.keys(platformAdapters);
   const rows = await repo.listPlatformRows();
-  const byName = new Map(rows.map((r) => [r.platform_name, r]));
+  const byName = new Map(rows.map((r: PlatformRow) => [r.platform_name, r]));
 
   // Tampilkan SEMUA platform yang punya adapter terdaftar, walau belum
   // pernah connect sama sekali (row-nya belum ada) — supaya dashboard bisa
