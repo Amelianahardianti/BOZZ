@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import * as repo from './repository';
 import { Role, User } from './repository';
+import { users as dummyUsers } from './internal/store';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-ganti-di-production';
 const JWT_EXPIRES_IN = '8h'; // sesi login berlaku 8 jam, sesuaikan kalau perlu
@@ -115,6 +116,19 @@ export interface UserSummary {
   role: Role;
 }
 
+/** Ciri-ciri error koneksi DB gagal (bukan "user tidak ada", yang itu bukan error). */
+function isDbUnavailable(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+  const message = 'message' in err ? String((err as { message?: unknown }).message ?? '') : '';
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ECONNRESET' ||
+    /ECONNREFUSED|ENOTFOUND|ECONNRESET|timeout|could not connect/i.test(message)
+  );
+}
+
 /**
  * Cari akun yang MASIH AKTIF. Diekspor lewat index.ts karena modul lain
  * perlu memastikan sebuah akun benar ada, aktif, dan rolenya sesuai --
@@ -123,12 +137,24 @@ export interface UserSummary {
  * Modul yang bertanggung jawab atas data user adalah modul ini, jadi
  * pengecekannya juga tinggal di sini (bukan di sales-inventory).
  *
+ * Kalau Supabase lagi gak bisa diakses (bukan "user-nya emang gak
+ * ada" -- itu tetap null), fallback ke data dummy di internal/store.ts
+ * biar modul lain tidak ikut macet gara-gara DB gratisan lagi down.
+ *
  * @returns null kalau akunnya tidak ada atau sudah dinonaktifkan.
  */
 export async function findActiveUser(id: string): Promise<UserSummary | null> {
-  const user = await repo.findById(id);
-  if (!user || !user.is_active) return null;
-  return { id: user.id, name: user.name, role: user.role };
+  try {
+    const user = await repo.findById(id);
+    if (!user || !user.is_active) return null;
+    return { id: user.id, name: user.name, role: user.role };
+  } catch (err) {
+    if (!isDbUnavailable(err)) throw err;
+
+    const dummy = dummyUsers.find((u) => u.id === id);
+    if (!dummy || !dummy.is_active) return null;
+    return { id: dummy.id, name: dummy.name, role: dummy.role };
+  }
 }
 
 // Tabel store_settings sengaja didesain cuma 1 baris (profil toko
