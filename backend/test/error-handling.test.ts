@@ -1,13 +1,16 @@
-// backend/test/error-handling.test.ts
+// backend/test/9or-handling.test.ts
 
 // Menguji kontrak SRS 9.7: apa pun yang salah, response-nya selalu
 // { error: { code, message } } dan selalu JSON — tidak pernah HTML,
 // tidak pernah bocorin detail internal.
 
+import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { app, toErrorResponse } from '../src/app';
 import { AppError, badRequest, conflict } from '../src/shared/errors';
 import * as repo from '../src/modules/auth-product/repository';
+import { tokenFor } from './helpers/auth';
+import { describe, expect, it, jest } from '@jest/globals';
 
 /** Pastikan body-nya persis bentuk standar, bukan sekadar "mirip". */
 function expectStandardShape(body: unknown): { code: string; message: string } {
@@ -19,12 +22,6 @@ function expectStandardShape(body: unknown): { code: string; message: string } {
   expect(typeof error.message).toBe('string');
   expect(error.message.length).toBeGreaterThan(0);
   return error;
-}
-
-async function loginAs(username: string, password: string): Promise<string> {
-  const res = await request(app).post('/api/auth/login').send({ username, password });
-  expect(res.status).toBe(200);
-  return res.body.token as string;
 }
 
 describe('endpoint tidak dikenal', () => {
@@ -60,16 +57,10 @@ describe('error dari middleware auth', () => {
   });
 
   it('403 kalau role-nya tidak berhak', async () => {
-    const tokenOwner = await loginAs('owner', 'owner123');
-
-    const dibuat = await request(app)
-      .post('/api/staff')
-      .set('Authorization', `Bearer ${tokenOwner}`)
-      .send({ name: 'Kasir Satu', username: 'kasir1', password: 'kasir123', role: 'kasir' });
-    expect(dibuat.status).toBe(201);
-
-    const tokenKasir = await loginAs('kasir1', 'kasir123');
-    const res = await request(app).get('/api/staff').set('Authorization', `Bearer ${tokenKasir}`);
+    // GET /api/staff cuma buat Owner; kasir harus ditolak 403, bukan 401.
+    const res = await request(app)
+      .get('/api/staff')
+      .set('Authorization', `Bearer ${tokenFor('kasir')}`);
 
     expect(res.status).toBe(403);
     expect(expectStandardShape(res.body).code).toBe('FORBIDDEN');
@@ -99,9 +90,26 @@ describe('error dari validasi input', () => {
 
 describe('error yang dilempar service (bentuk object lama)', () => {
   it('tetap diterjemahkan ke bentuk standar', async () => {
+    // Akunnya ada, passwordnya yang salah. Datanya dipalsukan di sini
+    // supaya test ini tidak butuh koneksi database.
+    const repoSpy = jest.spyOn(repo, 'findByEmailOrUsername').mockResolvedValue({
+      id: 'user-uji',
+      name: 'Owner Uji',
+      email_or_username: 'owner',
+      password_hash: bcrypt.hashSync('password-yang-benar', 10),
+      role: 'owner',
+      phone: null,
+      is_active: true,
+      created_by: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'owner', password: 'salah-banget' });
+      .send({ email_or_username: 'owner', password: 'salah-banget' });
+
+    repoSpy.mockRestore();
 
     expect(res.status).toBe(401);
     const error = expectStandardShape(res.body);
@@ -153,7 +161,7 @@ describe('error tak terduga lewat request sungguhan', () => {
 
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'owner', password: 'owner123' });
+      .send({ email_or_username: 'owner', password: 'owner123' });
 
     expect(res.status).toBe(500);
     expect(res.headers['content-type']).toMatch(/application\/json/);

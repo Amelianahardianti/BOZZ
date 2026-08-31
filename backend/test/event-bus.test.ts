@@ -9,6 +9,7 @@ import {
   resetEventBus,
   subscribe,
 } from '../src/shared/event-bus';
+import { describe, expect, it, jest, afterEach } from '@jest/globals';
 
 // Bus itu singleton, jadi sisa listener dari test sebelumnya bisa bocor
 // ke test berikutnya kalau tidak dibersihkan.
@@ -63,8 +64,8 @@ describe('publish/subscribe', () => {
   });
 
   it('hanya memicu listener event yang bersangkutan', () => {
-    const stok = jest.fn();
-    const order = jest.fn();
+    const stok = jest.fn(() => undefined);
+    const order = jest.fn(() => undefined);
     subscribe(EVENTS.STOCK_UPDATED, stok);
     subscribe(EVENTS.ORDER_RECEIVED, order);
 
@@ -94,7 +95,7 @@ describe('publish/subscribe', () => {
 
 describe('unsubscribe', () => {
   it('menghentikan pengiriman event setelah dipanggil', () => {
-    const handler = jest.fn();
+    const handler = jest.fn(() => undefined);
     const berhenti = subscribe(EVENTS.STOCK_UPDATED, handler);
 
     publish(EVENTS.STOCK_UPDATED, { product_id: 'p-1', stock_after: 5, reason: 'restock' });
@@ -114,7 +115,7 @@ describe('isolasi error listener', () => {
     subscribe(EVENTS.STOCK_UPDATED, () => {
       throw new Error('Shopee API down');
     });
-    const listenerSehat = jest.fn();
+    const listenerSehat = jest.fn(() => undefined);
     subscribe(EVENTS.STOCK_UPDATED, listenerSehat);
 
     expect(() =>
