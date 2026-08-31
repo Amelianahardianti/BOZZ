@@ -13,17 +13,32 @@ import { requireAuth, requireRole, AuthenticatedRequest } from '../../shared/mid
 
 export const router = Router();
 
+function normalizeUsernameInput<T extends { email_or_username?: string; username?: string }>(input: T) {
+  const resolvedUsername = input.email_or_username ?? input.username;
+  if (!resolvedUsername) {
+    return input;
+  }
+
+  return {
+    ...input,
+    email_or_username: resolvedUsername,
+  };
+}
+
 // ---------- POST /api/auth/login ----------
-const loginSchema = z.object({
-  email_or_username: z.string().min(1),
-  password: z.string().min(1),
-});
+const loginSchema = z
+  .object({
+    email_or_username: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    password: z.string().min(1),
+  })
+  .transform((body) => normalizeUsernameInput(body));
 
 router.post(
   '/auth/login',
   asyncHandler(async (req, res) => {
     const body = loginSchema.parse(req.body);
-    const result = await service.login(body.email_or_username, body.password);
+    const result = await service.login(body.email_or_username!, body.password);
     res.status(200).json(result);
   })
 );
@@ -58,13 +73,16 @@ router.get(
 );
 
 // ---------- POST /api/staff ----------
-const createStaffSchema = z.object({
-  name: z.string().min(1),
-  email_or_username: z.string().min(1),
-  password: z.string().min(6, 'Password minimal 6 karakter'),
-  role: z.enum(['kasir', 'pengepak']),
-  phone: z.string().optional(),
-});
+const createStaffSchema = z
+  .object({
+    name: z.string().min(1),
+    email_or_username: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    password: z.string().min(6, 'Password minimal 6 karakter'),
+    role: z.enum(['kasir', 'pengepak']),
+    phone: z.string().optional(),
+  })
+  .transform((body) => normalizeUsernameInput(body));
 
 router.post(
   '/staff',
@@ -74,6 +92,7 @@ router.post(
     const body = createStaffSchema.parse(req.body);
     const newStaff = await service.createStaff({
       ...body,
+      email_or_username: body.email_or_username!,
       createdByUserId: req.user!.id,
     });
     res.status(201).json(newStaff);
@@ -81,12 +100,15 @@ router.post(
 );
 
 // ---------- PATCH /api/staff/:id ----------
-const updateStaffSchema = z.object({
-  name: z.string().min(1).optional(),
-  email_or_username: z.string().min(1).optional(),
-  role: z.enum(['kasir', 'pengepak']).optional(),
-  phone: z.string().optional(),
-});
+const updateStaffSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    email_or_username: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    role: z.enum(['kasir', 'pengepak']).optional(),
+    phone: z.string().optional(),
+  })
+  .transform((body) => normalizeUsernameInput(body));
 
 router.patch(
   '/staff/:id',

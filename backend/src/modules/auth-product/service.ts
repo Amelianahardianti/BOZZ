@@ -188,3 +188,29 @@ export async function createNotification(input: {
     reference_id: input.referenceId,
   });
 }
+
+/**
+ * Data akun seperlunya buat dipakai modul lain -- sengaja bukan seluruh
+ * User, biar field sensitif tidak ikut menyebar ke mana-mana.
+ */
+export interface UserSummary {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+/**
+ * Cari akun yang MASIH AKTIF. Dibuka lewat index.ts karena modul lain
+ * perlu memastikan sebuah akun benar ada, aktif, dan rolenya sesuai --
+ * misalnya sales-inventory yang harus memastikan ticket packing
+ * di-assign ke Pengepak, bukan ke kasir atau akun yang sudah nonaktif.
+ * Modul yang bertanggung jawab atas data user adalah modul ini, jadi
+ * pengecekannya juga tinggal di sini.
+ *
+ * @returns null kalau akunnya tidak ada atau sudah dinonaktifkan.
+ */
+export async function findActiveUser(id: string): Promise<UserSummary | null> {
+  const user = await repo.findById(id);
+  if (!user || !user.is_active) return null;
+  return { id: user.id, name: user.name, role: user.role };
+}

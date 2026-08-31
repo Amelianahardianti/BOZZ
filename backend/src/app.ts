@@ -9,7 +9,16 @@ import { router as authProductRouter } from './modules/auth-product';
 
 export const app = express();
 
-app.use(express.json());
+// rawBody disimpan buat verifikasi signature webhook (ecommerce-sync) —
+// JSON.stringify(req.body) tidak dijamin identik byte-per-byte dengan body
+// asli yang ditandatangani platform.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 // Daftarkan router tiap modul sesuai prefix di contracts/api.yaml
 app.use('/api', salesInventoryRouter);
@@ -84,7 +93,7 @@ export function toErrorResponse(err: unknown): { status: number; body: ErrorResp
   //    bukan Error). Masih didukung supaya kode yang sudah ada tidak
   //    rusak, tapi untuk kode baru pakai helper di shared/errors.ts.
   if (isRecord(err) && typeof err.code === 'string' && typeof err.message === 'string') {
-    const status = typeof err.status === 'number' ? err.status : 400;
+    const status = typeof err.status === 'number' ? err.status : 500;
     if (status < 500) {
       return { status, body: { error: { code: err.code, message: err.message } } };
     }

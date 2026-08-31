@@ -9,3 +9,8 @@ export { router } from './routes';
 // assign ticket ke pengepak, Order Hub saat order baru masuk. Lihat
 // shared/interfaces/index.ts untuk kontrak tipenya (SRS 9.6).
 export { createNotification } from './service';
+
+// Dipakai sales-inventory buat memastikan ticket packing di-assign ke
+// Pengepak yang benar-benar ada dan masih aktif.
+export { findActiveUser } from './service';
+export type { UserSummary } from './service';
