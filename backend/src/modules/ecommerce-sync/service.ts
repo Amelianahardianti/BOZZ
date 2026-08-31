@@ -200,7 +200,7 @@ export async function updateOrderStatus(id: string, status: string) {
 }
 
 async function forwardStatusToPlatform(platformId: string, externalOrderId: string, status: string) {
-  const platformRow = await repo.listPlatformRows().then((rows) => rows.find((r) => r.id === platformId));
+  const platformRow = await repo.findPlatformById(platformId);
   if (!platformRow) return;
 
   const adapter = platformAdapters[platformRow.platform_name];

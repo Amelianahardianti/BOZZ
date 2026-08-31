@@ -32,6 +32,10 @@ export async function listPlatformRows() {
   return prisma.platforms.findMany({ orderBy: { platform_name: 'asc' } });
 }
 
+export async function findPlatformById(id: string) {
+  return prisma.platforms.findUnique({ where: { id } });
+}
+
 export async function getDecryptedToken(platformName: string): Promise<StoredToken | null> {
   const row = await findPlatformRow(platformName);
   if (!row?.access_token_encrypted || !row.refresh_token_encrypted || !row.token_expires_at || !row.shop_id_external) {
