@@ -41,3 +41,20 @@ export const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.storeSettings, label: 'Pengaturan Toko', roles: ['owner'] },
   { path: ROUTES.notifications, label: 'Notifikasi', roles: ['owner', 'kasir', 'pengepak'] },
 ]
+
+/**
+ * Halaman pertama yang dilihat tiap role abis login -- sesuai SRS 2.2
+ * (tabel hak akses): Kasir cuma punya akses Kasir/POS, Pengepak cuma
+ * 'Ticket Saya', jadi jangan diarahin ke Dashboard yang bukan haknya.
+ */
+export function getDefaultRouteForRole(role: AppRole): string {
+  switch (role) {
+    case 'kasir':
+      return ROUTES.kasir
+    case 'pengepak':
+      return ROUTES.tickets
+    case 'owner':
+    default:
+      return ROUTES.dashboard
+  }
+}

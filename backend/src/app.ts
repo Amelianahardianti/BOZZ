@@ -1,5 +1,6 @@
 // backend/src/app.ts
 
+import cors from 'cors';
 import express, { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError, ErrorCode, notFound } from './shared/errors';
@@ -8,6 +9,18 @@ import { router as ecommerceSyncRouter } from './modules/ecommerce-sync';
 import { router as authProductRouter } from './modules/auth-product';
 
 export const app = express();
+
+// PWA (apps/pwa) dideploy terpisah dari backend ini (Cloudflare
+// Pages/Vercel vs Render -- SRS 4.2), jadi request-nya lintas origin.
+// Default-nya cukup buat dev lokal; pas deploy production, set
+// CORS_ORIGIN di env ke domain PWA yang sebenarnya (boleh lebih dari
+// satu, pisahkan pakai koma).
+const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173,http://localhost:5174')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({ origin: corsOrigins }));
 
 // rawBody disimpan buat verifikasi signature webhook (ecommerce-sync) —
 // JSON.stringify(req.body) tidak dijamin identik byte-per-byte dengan body
