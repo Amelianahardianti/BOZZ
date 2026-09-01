@@ -54,7 +54,7 @@ export function LoginPage() {
         <h1 className="text-lg font-semibold text-slate-900">Masuk</h1>
         <p className="mt-1 text-sm text-slate-500">Masuk pakai akun staf toko kamu.</p>
 
-        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4" noValidate>
+        <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-4" autoComplete="off" noValidate>
           <div className="flex flex-col gap-1">
             <label htmlFor="email_or_username" className="text-sm font-medium text-slate-700">
               Username / Email
@@ -63,7 +63,11 @@ export function LoginPage() {
               id="email_or_username"
               name="email_or_username"
               type="text"
-              autoComplete="username"
+              // "off" sengaja, BUKAN "username" -- Kasir/POS (SRS 2.2)
+              // itu perangkat bersama di toko, ganti-gantian staf per
+              // shift. Kalau browser nawarin "recent input", staf yang
+              // login bisa ketiban username staf sebelumnya.
+              autoComplete="off"
               required
               value={emailOrUsername}
               onChange={(event) => setEmailOrUsername(event.target.value)}
@@ -79,7 +83,12 @@ export function LoginPage() {
               id="password"
               name="password"
               type="password"
-              autoComplete="current-password"
+              // "new-password" (bukan "current-password"/"off") adalah
+              // trik yang beneran dianggap Chrome buat MATIIN dropdown
+              // "gunakan password tersimpan" -- alasan sama kayak
+              // username di atas: device bersama, jangan nawarin
+              // password staf lain.
+              autoComplete="new-password"
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
