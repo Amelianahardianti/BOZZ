@@ -1012,7 +1012,7 @@ components:
       name: platform
       in: path
       required: true
-      schema: { type: string, enum: [shopee, tokopedia] }
+      schema: { type: string, enum: [shopee, tiktok, fakestore] }
     PageParam:
       name: page
       in: query
@@ -1412,7 +1412,7 @@ components:
       type: object
       properties:
         id: { type: string, format: uuid }
-        platform_name: { type: string, enum: [shopee, tokopedia] }
+        platform_name: { type: string, enum: [shopee, tiktok, fakestore] }
         shop_id_external: { type: string, nullable: true }
         token_expires_at: { type: string, format: date-time, nullable: true }
         is_connected: { type: boolean }

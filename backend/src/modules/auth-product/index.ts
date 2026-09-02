@@ -14,3 +14,8 @@ export { createNotification } from './service';
 // Pengepak yang benar-benar ada dan masih aktif.
 export { findActiveUser } from './service';
 export type { UserSummary } from './service';
+
+// Dipakai sales-inventory buat menemukan akun Owner (mis. saat order
+// marketplace baru masuk dan perlu dikabari) tanpa perlu tahu ID-nya
+// duluan -- lihat event-subscribers.ts.
+export { listStaff } from './service';
