@@ -10,7 +10,7 @@
 import { createHash } from 'crypto';
 import { z, ZodError } from 'zod';
 import * as repo from './repository';
-import { AppError, badRequest, conflict, notFound } from '../../shared/errors';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../../shared/errors';
 import { EVENTS, publish } from '../../shared/event-bus';
 import {
   Category,
@@ -21,12 +21,14 @@ import {
   StockAdjustment,
   StoredTransaction,
   Ticket,
+  TicketStatus,
   Transaction,
   TransactionType,
 } from './internal/store';
 import { parseProductWorkbook, RawImportRow } from './internal/product-import';
 // Modul lain hanya boleh diakses lewat index.ts-nya, bukan file dalamnya.
-import { findActiveUser } from '../auth-product';
+import { createNotification, findActiveUser } from '../auth-product';
+import type { UserSummary } from '../auth-product';
 
 // ---------------------------------------------------------------------
 // Categories
@@ -747,6 +749,28 @@ export async function getTransaction(id: string): Promise<Transaction> {
 // Ticket packing (POST /tickets)
 // ---------------------------------------------------------------------
 
+/**
+ * Pastikan sebuah akun boleh dikasih ticket packing: ada, masih aktif,
+ * dan rolenya Pengepak. Data akun dipegang modul auth-product, jadi
+ * ditanyakan lewat pintu resminya (index.ts), bukan dengan mengintip
+ * internal-nya.
+ *
+ * Dipakai bareng oleh createTicket dan assignTicket -- dua-duanya
+ * menaruh ticket di tangan seseorang, jadi syaratnya harus sama persis.
+ */
+async function pastikanPengepakAktif(userId: string): Promise<UserSummary> {
+  const penerima = await findActiveUser(userId);
+  if (!penerima) {
+    throw badRequest('Staf yang dipilih tidak ditemukan atau sudah nonaktif.');
+  }
+  if (penerima.role !== 'pengepak') {
+    throw badRequest(
+      `Ticket packing hanya bisa diberikan ke Pengepak, sedangkan "${penerima.name}" adalah ${penerima.role}.`
+    );
+  }
+  return penerima;
+}
+
 export async function createTicket(input: {
   externalOrderId: string;
   assignedToUserId: string;
@@ -761,18 +785,7 @@ export async function createTicket(input: {
     throw conflict(`Order ini sudah punya ticket packing (${sudahAda.id}).`);
   }
 
-  // Ticket packing hanya boleh dipegang Pengepak. Data akun dipegang
-  // modul auth-product, jadi ditanyakan lewat pintu resminya (index.ts),
-  // bukan dengan mengintip internal-nya.
-  const penerima = await findActiveUser(input.assignedToUserId);
-  if (!penerima) {
-    throw badRequest('Staf yang dipilih tidak ditemukan atau sudah nonaktif.');
-  }
-  if (penerima.role !== 'pengepak') {
-    throw badRequest(
-      `Ticket packing hanya bisa diberikan ke Pengepak, sedangkan "${penerima.name}" adalah ${penerima.role}.`
-    );
-  }
+  const penerima = await pastikanPengepakAktif(input.assignedToUserId);
 
   const items = [];
   // Dua baris untuk produk yang sama digabung, supaya daftar packing
@@ -798,4 +811,136 @@ export async function createTicket(input: {
     notes: input.notes,
     items,
   });
+}
+
+/** Daftar seluruh ticket untuk layar Owner (FR-SI-11). */
+export async function listTickets(filter: {
+  status?: TicketStatus;
+  page: number;
+  limit: number;
+}): Promise<Ticket[]> {
+  return repo.listTickets(filter);
+}
+
+/**
+ * Daftar ticket milik pengepak yang sedang login.
+ *
+ * Penerimanya diambil dari token, BUKAN dari query -- kalau boleh
+ * dikirim lewat parameter, seorang pengepak bisa mengintip antrean
+ * kerja pengepak lain cuma dengan menebak id-nya.
+ *
+ * Tidak dipotong per halaman: satu pengepak hanya memegang beberapa
+ * ticket, dan layar packing perlu melihat semuanya sekaligus.
+ */
+export async function listMyTickets(pengepakUserId: string): Promise<Ticket[]> {
+  return repo.listTickets({ assignedToUserId: pengepakUserId });
+}
+
+/**
+ * Kabari pengepak bahwa ada ticket buat dia (FR-FI-10).
+ *
+ * Kegagalan di sini SENGAJA tidak menggagalkan penugasannya. Ticket-nya
+ * sudah benar-benar berpindah tangan; kalau request dibalas error cuma
+ * gara-gara notifikasi gagal masuk, Owner akan mengira penugasannya
+ * batal lalu mengulang -- padahal sudah jadi. Notifikasi yang gagal
+ * dicatat ke log server supaya tetap bisa ditelusuri.
+ */
+async function kabariPengepak(ticket: Ticket, penerima: UserSummary): Promise<void> {
+  try {
+    await createNotification({
+      userId: penerima.id,
+      type: 'new_ticket',
+      title: 'Ticket packing baru',
+      message: `Order ${ticket.external_order_id} (${ticket.items.length} jenis barang) ditugaskan ke kamu.`,
+      referenceType: 'ticket',
+      referenceId: ticket.id,
+    });
+  } catch (err) {
+    console.error(`[tickets] notifikasi assign ticket ${ticket.id} gagal dibuat`, err);
+  }
+}
+
+/**
+ * Pindahkan ticket ke pengepak tertentu, lalu kabari orangnya
+ * (FR-SI-10, FR-FI-10).
+ *
+ * Dipakai juga buat memindahkan ticket yang sudah terlanjur di-assign --
+ * pengepaknya bisa saja mendadak tidak masuk, dan ordernya tetap harus
+ * jalan.
+ */
+export async function assignTicket(input: {
+  ticketId: string;
+  assignedToUserId: string;
+  assignedByUserId: string;
+}): Promise<Ticket> {
+  const penerima = await pastikanPengepakAktif(input.assignedToUserId);
+
+  const ticket = await repo.assignTicket({
+    ticket_id: input.ticketId,
+    assigned_to_user_id: penerima.id,
+    assigned_by: input.assignedByUserId,
+  });
+
+  await kabariPengepak(ticket, penerima);
+
+  return ticket;
+}
+
+/**
+ * Status order yang dikabarkan ke marketplace saat packing rampung.
+ *
+ * BELUM FINAL -- ini bagian dari enum status yang masih menunggu
+ * kesepakatan Orang A + Orang B (lihat catatan di contracts/api.yaml
+ * pada /tickets/{id}/status). Sengaja dipilih 'processing', bukan
+ * 'shipped': saat centang terakhir dicoret, barangnya baru selesai
+ * dikemas dan BELUM diserahkan ke kurir. Event ini diteruskan
+ * ecommerce-sync ke Shopee/Tokopedia, jadi mengaku 'shipped' lebih awal
+ * berarti berbohong ke pembeli soal posisi barangnya.
+ *
+ * Kalau nanti tim sepakat lain, cukup konstanta ini yang diubah.
+ */
+const STATUS_ORDER_SAAT_PACKING_SELESAI = 'processing' as const;
+
+/**
+ * Update status pengerjaan ticket dan/atau checklist itemnya (FR-SI-11).
+ *
+ * Pengepak cuma boleh menyentuh ticket miliknya sendiri; Owner boleh
+ * semua, karena dia yang membereskan kalau ada staf berhalangan.
+ */
+export async function updateTicketProgress(input: {
+  ticketId: string;
+  status?: TicketStatus;
+  items?: { id: string; is_packed: boolean }[];
+  actor: { id: string; role: 'owner' | 'kasir' | 'pengepak' };
+}): Promise<Ticket> {
+  const ticket = await repo.findTicketById(input.ticketId);
+  if (!ticket) {
+    throw notFound('Ticket tidak ditemukan.');
+  }
+
+  // Kalau tidak dicek, seorang pengepak bisa mencentang selesai ticket
+  // pengepak lain -- ordernya dianggap beres padahal barangnya belum
+  // pernah disiapkan.
+  if (input.actor.role === 'pengepak' && ticket.assigned_to_user_id !== input.actor.id) {
+    throw forbidden('Ticket ini bukan tugas kamu.');
+  }
+
+  const { ticket: updated, baruSajaSelesai } = await repo.updateTicketProgress({
+    ticket_id: input.ticketId,
+    status: input.status,
+    items: input.items,
+  });
+
+  // Baru dipublikasikan setelah centangnya benar-benar tersimpan, dan
+  // HANYA pada saat perubahan dari "belum lengkap" jadi "lengkap" --
+  // supaya setiap request berikutnya tidak mengirim kabar yang sama
+  // berulang-ulang ke marketplace.
+  if (baruSajaSelesai) {
+    publish(EVENTS.ORDER_STATUS_CHANGED, {
+      external_order_id: updated.external_order_id,
+      new_status: STATUS_ORDER_SAAT_PACKING_SELESAI,
+    });
+  }
+
+  return updated;
 }

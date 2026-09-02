@@ -15,8 +15,9 @@ import request from 'supertest';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { app } from '../src/app';
 import * as repo from '../src/modules/auth-product/repository';
-import type { User } from '../src/modules/auth-product/repository';
-import { OWNER_ID, ownerToken, staffToken } from './helpers/auth';
+import type { Notification, User } from '../src/modules/auth-product/repository';
+import { OWNER_ID, ownerToken, staffToken, tokenFor } from './helpers/auth';
+import { EVENTS, OrderStatusChangedPayload, subscribe } from '../src/shared/event-bus';
 
 jest.mock('../src/modules/auth-product/repository');
 
@@ -39,6 +40,22 @@ function buildUser(overrides: Partial<User> = {}): User {
     created_by: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+/** Notifikasi palsu buat balikan mock createNotification. */
+function buildNotification(overrides: Partial<Notification> = {}): Notification {
+  return {
+    id: 'notif-1',
+    user_id: 'user-1',
+    type: 'new_ticket',
+    title: 'Ticket packing baru',
+    message: null,
+    reference_type: 'ticket',
+    reference_id: 'ticket-1',
+    is_read: false,
+    created_at: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -330,6 +347,738 @@ describe('POST /api/tickets', () => {
     expect((await createTicket(staffToken('pengepak'), body)).status).toBe(403);
 
     const tanpaToken = await request(app).post('/api/tickets').send(body);
+    expect(tanpaToken.status).toBe(401);
+  });
+});
+
+describe('GET /api/tickets', () => {
+  it('menolak request tanpa token, dan melarang kasir & pengepak', async () => {
+    expect((await request(app).get('/api/tickets')).status).toBe(401);
+
+    const kasir = await request(app)
+      .get('/api/tickets')
+      .set('Authorization', `Bearer ${staffToken('kasir')}`);
+    expect(kasir.status).toBe(403);
+
+    const pengepak = await request(app)
+      .get('/api/tickets')
+      .set('Authorization', `Bearer ${staffToken('pengepak')}`);
+    expect(pengepak.status).toBe(403);
+  });
+
+  it('membalas array polos berisi ticket lengkap dengan itemnya', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const orderId = randomUUID();
+
+    await createTicket(token, {
+      external_order_id: orderId,
+      assigned_to_user_id: pengepak.id,
+      items: [{ product_id: await seedProduct(token), qty: 2 }],
+    });
+
+    const res = await request(app)
+      .get('/api/tickets')
+      .query({ limit: 100 })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    // Sesuai kontrak: array polos, bukan { data, page, limit, total }.
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const punyaKita = res.body.find((t: { external_order_id: string }) => t.external_order_id === orderId);
+    expect(punyaKita).toBeDefined();
+    expect(punyaKita.status).toBe('assigned');
+    expect(punyaKita.items).toHaveLength(1);
+    expect(punyaKita.items[0].qty).toBe(2);
+    expect(punyaKita.items[0].is_packed).toBe(false);
+  });
+
+  it('mengurutkan dari ticket paling lama, karena ini antrean kerja', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const productId = await seedProduct(token);
+
+    const lama = randomUUID();
+    const baru = randomUUID();
+    await createTicket(token, {
+      external_order_id: lama,
+      assigned_to_user_id: pengepak.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+    await createTicket(token, {
+      external_order_id: baru,
+      assigned_to_user_id: pengepak.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+
+    const res = await request(app)
+      .get('/api/tickets')
+      .query({ limit: 100 })
+      .set('Authorization', `Bearer ${token}`);
+
+    const orders = res.body.map((t: { external_order_id: string }) => t.external_order_id);
+    expect(orders.indexOf(lama)).toBeLessThan(orders.indexOf(baru));
+  });
+
+  it('memfilter berdasarkan status', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const orderId = randomUUID();
+
+    await createTicket(token, {
+      external_order_id: orderId,
+      assigned_to_user_id: pengepak.id,
+      items: [{ product_id: await seedProduct(token), qty: 1 }],
+    });
+
+    // Ticket baru selalu berstatus 'assigned'.
+    const assigned = await request(app)
+      .get('/api/tickets')
+      .query({ status: 'assigned', limit: 100 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(assigned.body.every((t: { status: string }) => t.status === 'assigned')).toBe(true);
+    expect(
+      assigned.body.some((t: { external_order_id: string }) => t.external_order_id === orderId)
+    ).toBe(true);
+
+    // Belum ada endpoint pengubah status, jadi status lain pasti kosong.
+    const handedOver = await request(app)
+      .get('/api/tickets')
+      .query({ status: 'handed_over', limit: 100 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(handedOver.body).toEqual([]);
+  });
+
+  it('memotong hasil per halaman', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const productId = await seedProduct(token);
+
+    for (let i = 0; i < 2; i += 1) {
+      await createTicket(token, {
+        external_order_id: randomUUID(),
+        assigned_to_user_id: pengepak.id,
+        items: [{ product_id: productId, qty: 1 }],
+      });
+    }
+
+    const halaman1 = await request(app)
+      .get('/api/tickets')
+      .query({ page: 1, limit: 1 })
+      .set('Authorization', `Bearer ${token}`);
+    const halaman2 = await request(app)
+      .get('/api/tickets')
+      .query({ page: 2, limit: 1 })
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(halaman1.body).toHaveLength(1);
+    expect(halaman2.body).toHaveLength(1);
+    expect(halaman1.body[0].id).not.toBe(halaman2.body[0].id);
+  });
+
+  it('menolak status di luar daftar dan limit di luar 1..100', async () => {
+    const token = ownerToken();
+
+    const statusSalah = await request(app)
+      .get('/api/tickets')
+      .query({ status: 'selesai' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusSalah.status).toBe(400);
+    expect(statusSalah.body.error.code).toBe('VALIDATION_ERROR');
+
+    const limitSalah = await request(app)
+      .get('/api/tickets')
+      .query({ limit: 101 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(limitSalah.status).toBe(400);
+  });
+});
+
+describe('GET /api/tickets/my', () => {
+  it('menolak request tanpa token, dan melarang owner & kasir', async () => {
+    expect((await request(app).get('/api/tickets/my')).status).toBe(401);
+
+    const owner = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${ownerToken()}`);
+    expect(owner.status).toBe(403);
+
+    const kasir = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${staffToken('kasir')}`);
+    expect(kasir.status).toBe(403);
+  });
+
+  it('hanya membalas ticket milik pengepak yang sedang login', async () => {
+    const token = ownerToken();
+    const productId = await seedProduct(token);
+
+    const saya = buildUser({ id: `pengepak-saya-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const oranglain = buildUser({ id: `pengepak-lain-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(saya, oranglain);
+
+    const orderSaya = randomUUID();
+    const orderOrangLain = randomUUID();
+    await createTicket(token, {
+      external_order_id: orderSaya,
+      assigned_to_user_id: saya.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+    await createTicket(token, {
+      external_order_id: orderOrangLain,
+      assigned_to_user_id: oranglain.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+
+    const res = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', saya.id)}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.every((t: { assigned_to_user_id: string }) => t.assigned_to_user_id === saya.id)).toBe(
+      true
+    );
+
+    const orders = res.body.map((t: { external_order_id: string }) => t.external_order_id);
+    expect(orders).toContain(orderSaya);
+    expect(orders).not.toContain(orderOrangLain);
+  });
+
+  it('penerima diambil dari token, tidak bisa diintip lewat query', async () => {
+    const token = ownerToken();
+    const productId = await seedProduct(token);
+
+    const saya = buildUser({ id: `pengepak-a-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const oranglain = buildUser({ id: `pengepak-b-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(saya, oranglain);
+
+    const orderOrangLain = randomUUID();
+    await createTicket(token, {
+      external_order_id: orderOrangLain,
+      assigned_to_user_id: oranglain.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+
+    // Coba paksa lewat query -- harus diabaikan total.
+    const res = await request(app)
+      .get('/api/tickets/my')
+      .query({ assigned_to_user_id: oranglain.id, user_id: oranglain.id })
+      .set('Authorization', `Bearer ${tokenFor('pengepak', saya.id)}`);
+
+    expect(res.status).toBe(200);
+    const orders = res.body.map((t: { external_order_id: string }) => t.external_order_id);
+    expect(orders).not.toContain(orderOrangLain);
+  });
+
+  it('membalas array kosong kalau belum dapat ticket sama sekali', async () => {
+    const res = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', `pengepak-baru-${randomUUID()}`)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('mengurutkan dari ticket paling lama', async () => {
+    const token = ownerToken();
+    const productId = await seedProduct(token);
+    const saya = buildUser({ id: `pengepak-urut-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(saya);
+
+    const lama = randomUUID();
+    const baru = randomUUID();
+    await createTicket(token, {
+      external_order_id: lama,
+      assigned_to_user_id: saya.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+    await createTicket(token, {
+      external_order_id: baru,
+      assigned_to_user_id: saya.id,
+      items: [{ product_id: productId, qty: 1 }],
+    });
+
+    const res = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', saya.id)}`);
+
+    const orders = res.body.map((t: { external_order_id: string }) => t.external_order_id);
+    expect(orders).toEqual([lama, baru]);
+  });
+});
+
+describe('PATCH /api/tickets/:id/assign', () => {
+  /** Bikin satu ticket yang sudah dipegang `pemilikAwal`. */
+  async function seedTicket(token: string, pemilikAwal: User): Promise<{ id: string; order: string }> {
+    const order = randomUUID();
+    const res = await createTicket(token, {
+      external_order_id: order,
+      assigned_to_user_id: pemilikAwal.id,
+      items: [{ product_id: await seedProduct(token), qty: 1 }],
+    });
+    expect(res.status).toBe(201);
+    return { id: res.body.id, order };
+  }
+
+  function assign(token: string, ticketId: string, body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/tickets/${ticketId}/assign`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  }
+
+  it('memindahkan ticket ke pengepak lain', async () => {
+    const token = ownerToken();
+    const lama = buildUser({ id: `pengepak-lama-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const baru = buildUser({
+      id: `pengepak-baru-${randomUUID().slice(0, 8)}`,
+      name: 'Pengepak Pengganti',
+      role: 'pengepak',
+    });
+    mockUsers(lama, baru);
+    const ticket = await seedTicket(token, lama);
+
+    const res = await assign(token, ticket.id, { assigned_to_user_id: baru.id });
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(ticket.id);
+    expect(res.body.assigned_to_user_id).toBe(baru.id);
+    expect(res.body.assigned_by).toBe(OWNER_ID);
+    expect(res.body.status).toBe('assigned');
+    expect(res.body.assigned_at).toBeTruthy();
+    // isi ticket tidak ikut berubah
+    expect(res.body.external_order_id).toBe(ticket.order);
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it('membuat notifikasi untuk pengepak yang baru ditugaskan', async () => {
+    const token = ownerToken();
+    const lama = buildUser({ id: `pengepak-l-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const baru = buildUser({ id: `pengepak-b-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(lama, baru);
+    const ticket = await seedTicket(token, lama);
+
+    mockedRepo.createNotification.mockResolvedValue(buildNotification());
+
+    await assign(token, ticket.id, { assigned_to_user_id: baru.id });
+
+    expect(mockedRepo.createNotification).toHaveBeenCalledTimes(1);
+    const dikirim = mockedRepo.createNotification.mock.calls[0][0];
+    expect(dikirim.user_id).toBe(baru.id);
+    expect(dikirim.type).toBe('new_ticket');
+    expect(dikirim.reference_type).toBe('ticket');
+    expect(dikirim.reference_id).toBe(ticket.id);
+    expect(dikirim.title).toBeTruthy();
+    expect(dikirim.message).toContain(ticket.order);
+  });
+
+  it('notifikasinya ditujukan ke penerima baru, bukan ke pengepak lama', async () => {
+    const token = ownerToken();
+    const lama = buildUser({ id: `pengepak-x-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const baru = buildUser({ id: `pengepak-y-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(lama, baru);
+    const ticket = await seedTicket(token, lama);
+
+    mockedRepo.createNotification.mockResolvedValue(buildNotification());
+    await assign(token, ticket.id, { assigned_to_user_id: baru.id });
+
+    expect(mockedRepo.createNotification.mock.calls[0][0].user_id).toBe(baru.id);
+    expect(mockedRepo.createNotification.mock.calls[0][0].user_id).not.toBe(lama.id);
+  });
+
+  it('ticket pindah ke antrean pengepak baru, hilang dari antrean yang lama', async () => {
+    const token = ownerToken();
+    const lama = buildUser({ id: `pengepak-p-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const baru = buildUser({ id: `pengepak-q-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(lama, baru);
+    const ticket = await seedTicket(token, lama);
+
+    await assign(token, ticket.id, { assigned_to_user_id: baru.id });
+
+    const antreanLama = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', lama.id)}`);
+    expect(antreanLama.body.map((t: { id: string }) => t.id)).not.toContain(ticket.id);
+
+    const antreanBaru = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', baru.id)}`);
+    expect(antreanBaru.body.map((t: { id: string }) => t.id)).toContain(ticket.id);
+  });
+
+  it('penugasan tetap berhasil walau pembuatan notifikasi gagal', async () => {
+    const token = ownerToken();
+    const lama = buildUser({ id: `pengepak-n1-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const baru = buildUser({ id: `pengepak-n2-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(lama, baru);
+    const ticket = await seedTicket(token, lama);
+
+    mockedRepo.createNotification.mockRejectedValue(new Error('database notifikasi mati'));
+    const diamkanLog = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const res = await assign(token, ticket.id, { assigned_to_user_id: baru.id });
+
+      // Ticket-nya sudah benar-benar berpindah, jadi jangan balas error --
+      // Owner bisa mengira penugasannya batal lalu mengulang.
+      expect(res.status).toBe(200);
+      expect(res.body.assigned_to_user_id).toBe(baru.id);
+      expect(diamkanLog).toHaveBeenCalled();
+    } finally {
+      diamkanLog.mockRestore();
+    }
+  });
+
+  it('menolak penugasan ke staf yang bukan Pengepak', async () => {
+    const token = ownerToken();
+    const pengepak = buildUser({ id: `pengepak-r-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const kasir = buildUser({ id: 'kasir-assign', name: 'Mbak Kasir', role: 'kasir' });
+    mockUsers(pengepak, kasir);
+    const ticket = await seedTicket(token, pengepak);
+
+    const res = await assign(token, ticket.id, { assigned_to_user_id: kasir.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/Pengepak/);
+    expect(mockedRepo.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('menolak penugasan ke akun tidak dikenal atau yang sudah nonaktif', async () => {
+    const token = ownerToken();
+    const pengepak = buildUser({ id: `pengepak-s-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const nonaktif = buildUser({
+      id: `pengepak-off-${randomUUID().slice(0, 8)}`,
+      role: 'pengepak',
+      is_active: false,
+    });
+    mockUsers(pengepak, nonaktif);
+    const ticket = await seedTicket(token, pengepak);
+
+    const hantu = await assign(token, ticket.id, { assigned_to_user_id: 'user-hantu' });
+    expect(hantu.status).toBe(400);
+
+    const mati = await assign(token, ticket.id, { assigned_to_user_id: nonaktif.id });
+    expect(mati.status).toBe(400);
+
+    // penerima aslinya tidak berubah
+    const tetap = await request(app)
+      .get('/api/tickets/my')
+      .set('Authorization', `Bearer ${tokenFor('pengepak', pengepak.id)}`);
+    expect(tetap.body.map((t: { id: string }) => t.id)).toContain(ticket.id);
+  });
+
+  it('membalas 404 kalau ticketnya tidak ada', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+
+    const res = await assign(token, 'ticket-hantu', { assigned_to_user_id: pengepak.id });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('menolak body tanpa assigned_to_user_id', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket(token, pengepak);
+
+    const res = await assign(token, ticket.id, {});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('melarang kasir & pengepak, dan menolak request tanpa token', async () => {
+    const owner = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket(owner, pengepak);
+    const body = { assigned_to_user_id: pengepak.id };
+
+    expect((await assign(staffToken('kasir'), ticket.id, body)).status).toBe(403);
+    expect((await assign(staffToken('pengepak'), ticket.id, body)).status).toBe(403);
+
+    const tanpaToken = await request(app)
+      .patch(`/api/tickets/${ticket.id}/assign`)
+      .send(body);
+    expect(tanpaToken.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/tickets/:id/status', () => {
+  /** Ticket dengan 2 item, dipegang `pemilik`. */
+  async function seedTicket2Item(
+    token: string,
+    pemilik: User
+  ): Promise<{ id: string; order: string; items: { id: string }[] }> {
+    const order = randomUUID();
+    const res = await createTicket(token, {
+      external_order_id: order,
+      assigned_to_user_id: pemilik.id,
+      items: [
+        { product_id: await seedProduct(token), qty: 1 },
+        { product_id: await seedProduct(token), qty: 2 },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(2);
+    return { id: res.body.id, order, items: res.body.items };
+  }
+
+  function ubahStatus(token: string, ticketId: string, body: Record<string, unknown>) {
+    return request(app)
+      .patch(`/api/tickets/${ticketId}/status`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+  }
+
+  /** Tangkap event order.status.changed selama satu aksi. */
+  async function tangkapEvent<T>(aksi: () => Promise<T>): Promise<OrderStatusChangedPayload[]> {
+    const diterima: OrderStatusChangedPayload[] = [];
+    const berhenti = subscribe(EVENTS.ORDER_STATUS_CHANGED, (payload) => {
+      diterima.push(payload);
+    });
+    try {
+      await aksi();
+    } finally {
+      berhenti();
+    }
+    return diterima;
+  }
+
+  it('mengubah status ticket', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const res = await ubahStatus(token, ticket.id, { status: 'packing' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('packing');
+    expect(res.body.completed_at).toBeNull();
+  });
+
+  it('mencentang sebagian item tanpa menyentuh yang lain', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const res = await ubahStatus(token, ticket.id, {
+      ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.find((i: { id: string }) => i.id === ticket.items[0].id).is_packed).toBe(
+      true
+    );
+    expect(res.body.items.find((i: { id: string }) => i.id === ticket.items[1].id).is_packed).toBe(
+      false
+    );
+  });
+
+  it('bisa mencentang dan mengganti status sekaligus', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const res = await ubahStatus(token, ticket.id, {
+      status: 'packing',
+      ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('packing');
+    expect(res.body.items.find((i: { id: string }) => i.id === ticket.items[0].id).is_packed).toBe(
+      true
+    );
+  });
+
+  it('centang bisa dibatalkan lagi (is_packed false)', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    await ubahStatus(token, ticket.id, {
+      ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+    });
+    const res = await ubahStatus(token, ticket.id, {
+      ticket_items: [{ id: ticket.items[0].id, is_packed: false }],
+    });
+
+    expect(res.body.items.find((i: { id: string }) => i.id === ticket.items[0].id).is_packed).toBe(
+      false
+    );
+  });
+
+  it('TIDAK mengirim event selama masih ada item yang belum dicentang', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const events = await tangkapEvent(() =>
+      ubahStatus(token, ticket.id, {
+        status: 'packing',
+        ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+      })
+    );
+
+    expect(events.filter((e) => e.external_order_id === ticket.order)).toHaveLength(0);
+  });
+
+  it('mengirim order.status.changed begitu centang terakhir masuk', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    await ubahStatus(token, ticket.id, {
+      ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+    });
+
+    const events = await tangkapEvent(() =>
+      ubahStatus(token, ticket.id, {
+        ticket_items: [{ id: ticket.items[1].id, is_packed: true }],
+      })
+    );
+
+    const punyaKita = events.filter((e) => e.external_order_id === ticket.order);
+    expect(punyaKita).toHaveLength(1);
+    expect(punyaKita[0].new_status).toBe('processing');
+    expect(punyaKita[0].occurred_at).toBeTruthy();
+  });
+
+  it('tidak mengirim event yang sama berulang kali', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    await ubahStatus(token, ticket.id, {
+      ticket_items: [
+        { id: ticket.items[0].id, is_packed: true },
+        { id: ticket.items[1].id, is_packed: true },
+      ],
+    });
+
+    // sudah lengkap sejak request sebelumnya -- request berikutnya tidak
+    // boleh mengabari marketplace lagi
+    const events = await tangkapEvent(() => ubahStatus(token, ticket.id, { status: 'packed' }));
+
+    expect(events.filter((e) => e.external_order_id === ticket.order)).toHaveLength(0);
+  });
+
+  it('mengisi completed_at saat ticket diserahkan, dan mengunci perubahan berikutnya', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const selesai = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+    expect(selesai.status).toBe(200);
+    expect(selesai.body.status).toBe('handed_over');
+    expect(selesai.body.completed_at).toBeTruthy();
+
+    const lagi = await ubahStatus(token, ticket.id, { status: 'packing' });
+    expect(lagi.status).toBe(409);
+    expect(lagi.body.error.code).toBe('CONFLICT');
+  });
+
+  it('pengepak boleh mengerjakan ticketnya sendiri', async () => {
+    const owner = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(owner, pengepak);
+
+    const res = await ubahStatus(tokenFor('pengepak', pengepak.id), ticket.id, {
+      status: 'packing',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('packing');
+  });
+
+  it('pengepak TIDAK boleh menyentuh ticket pengepak lain', async () => {
+    const owner = ownerToken();
+    const pemilik = buildUser({ id: `pengepak-m-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const penyusup = buildUser({ id: `pengepak-n-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    mockUsers(pemilik, penyusup);
+    const ticket = await seedTicket2Item(owner, pemilik);
+
+    const res = await ubahStatus(tokenFor('pengepak', penyusup.id), ticket.id, {
+      ticket_items: [
+        { id: ticket.items[0].id, is_packed: true },
+        { id: ticket.items[1].id, is_packed: true },
+      ],
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+
+    // centangnya benar-benar tidak tersimpan
+    const cek = await request(app)
+      .get('/api/tickets')
+      .query({ limit: 100 })
+      .set('Authorization', `Bearer ${owner}`);
+    const masih = cek.body.find((t: { id: string }) => t.id === ticket.id);
+    expect(masih.items.every((i: { is_packed: boolean }) => !i.is_packed)).toBe(true);
+  });
+
+  it('menolak id item yang bukan milik ticket ini, tanpa menyimpan centang lain', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    const res = await ubahStatus(token, ticket.id, {
+      ticket_items: [
+        { id: ticket.items[0].id, is_packed: true },
+        { id: 'item-hantu', is_packed: true },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/item-hantu/);
+
+    // semua atau tidak sama sekali -- item pertama tidak boleh terlanjur tercentang
+    const cek = await request(app)
+      .get('/api/tickets')
+      .query({ limit: 100 })
+      .set('Authorization', `Bearer ${token}`);
+    const masih = cek.body.find((t: { id: string }) => t.id === ticket.id);
+    expect(masih.items.every((i: { is_packed: boolean }) => !i.is_packed)).toBe(true);
+  });
+
+  it('menolak body kosong, status di luar daftar, dan is_packed bukan boolean', async () => {
+    const token = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(token, pengepak);
+
+    expect((await ubahStatus(token, ticket.id, {})).status).toBe(400);
+    expect((await ubahStatus(token, ticket.id, { status: 'selesai' })).status).toBe(400);
+    expect(
+      (
+        await ubahStatus(token, ticket.id, {
+          ticket_items: [{ id: ticket.items[0].id, is_packed: 'ya' }],
+        })
+      ).status
+    ).toBe(400);
+  });
+
+  it('membalas 404 kalau ticketnya tidak ada', async () => {
+    const res = await ubahStatus(ownerToken(), 'ticket-hantu', { status: 'packing' });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('melarang kasir, dan menolak request tanpa token', async () => {
+    const owner = ownerToken();
+    const pengepak = seedPengepak();
+    const ticket = await seedTicket2Item(owner, pengepak);
+
+    expect((await ubahStatus(staffToken('kasir'), ticket.id, { status: 'packing' })).status).toBe(
+      403
+    );
+
+    const tanpaToken = await request(app)
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ status: 'packing' });
     expect(tanpaToken.status).toBe(401);
   });
 });
