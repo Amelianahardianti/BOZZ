@@ -576,3 +576,126 @@ router.post(
     res.status(201).json(ticket);
   })
 );
+
+// ---------- GET /api/tickets/my ----------
+// WAJIB didaftarkan SEBELUM route '/tickets/:id' apa pun (belum ada
+// sekarang, tapi kontrak sudah menyiapkan /tickets/{id}/assign dkk).
+// Kalau terbalik, Express akan menganggap "my" sebagai id ticket.
+router.get(
+  '/tickets/my',
+  requireAuth,
+  requireRole('pengepak'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const tickets = await service.listMyTickets(req.user!.id);
+    res.status(200).json(tickets);
+  })
+);
+
+// ---------- GET /api/tickets ----------
+const listTicketsSchema = z.object({
+  status: z
+    .enum(['unassigned', 'assigned', 'packing', 'packed', 'handed_over'], {
+      errorMap: () => ({
+        message: 'status harus salah satu dari: unassigned, assigned, packing, packed, handed_over',
+      }),
+    })
+    .optional(),
+  page: z.coerce.number().int().min(1, 'page minimal 1').default(1),
+  limit: z.coerce.number().int().min(1, 'limit minimal 1').max(100, 'limit maksimal 100').default(20),
+});
+
+router.get(
+  '/tickets',
+  requireAuth,
+  // Papan pantau seluruh antrean packing -- ini layar Owner.
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const query = listTicketsSchema.parse(req.query);
+
+    const tickets = await service.listTickets({
+      status: query.status,
+      page: query.page,
+      limit: query.limit,
+    });
+
+    // Sesuai contracts/api.yaml endpoint ini membalas array polos, BUKAN
+    // dibungkus { data, page, limit, total } seperti /products.
+    res.status(200).json(tickets);
+  })
+);
+
+// ---------- PATCH /api/tickets/:id/assign ----------
+const assignTicketSchema = z.object({
+  assigned_to_user_id: z.string().trim().min(1, 'assigned_to_user_id wajib diisi'),
+});
+
+router.patch(
+  '/tickets/:id/assign',
+  requireAuth,
+  // Menentukan siapa yang mengerjakan order adalah keputusan Owner.
+  requireRole('owner'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const body = assignTicketSchema.parse(req.body);
+
+    const ticket = await service.assignTicket({
+      ticketId: req.params.id,
+      assignedToUserId: body.assigned_to_user_id,
+      assignedByUserId: req.user!.id,
+    });
+
+    res.status(200).json(ticket);
+  })
+);
+
+// ---------- PATCH /api/tickets/:id/status ----------
+// Dua-duanya opsional (bisa cuma mencentang item, bisa cuma ganti
+// status), tapi minimal salah satu harus ada -- PATCH kosong hampir
+// pasti bug di frontend.
+const updateTicketStatusSchema = z
+  .object({
+    status: z
+      .enum(['unassigned', 'assigned', 'packing', 'packed', 'handed_over'], {
+        errorMap: () => ({
+          message:
+            'status harus salah satu dari: unassigned, assigned, packing, packed, handed_over',
+        }),
+      })
+      .optional(),
+    ticket_items: z
+      .array(
+        z.object({
+          id: z.string().trim().min(1, 'id item wajib diisi'),
+          is_packed: z.boolean({
+            required_error: 'is_packed wajib diisi',
+            invalid_type_error: 'is_packed harus true atau false',
+          }),
+        })
+      )
+      .min(1, 'ticket_items tidak boleh kosong')
+      .optional(),
+  })
+  .refine(
+    (body) => body.status !== undefined || body.ticket_items !== undefined,
+    'Tidak ada yang diubah: isi status, ticket_items, atau dua-duanya.'
+  );
+
+router.patch(
+  '/tickets/:id/status',
+  requireAuth,
+  // Pengepak yang mengerjakan; Owner ikut boleh buat membereskan kalau
+  // stafnya berhalangan. Batas "cuma ticket sendiri" untuk pengepak
+  // ditegakkan di service, karena butuh data ticketnya.
+  requireRole('owner', 'pengepak'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const body = updateTicketStatusSchema.parse(req.body);
+
+    const ticket = await service.updateTicketProgress({
+      ticketId: req.params.id,
+      status: body.status,
+      items: body.ticket_items,
+      actor: req.user!,
+    });
+
+    res.status(200).json(ticket);
+  })
+);

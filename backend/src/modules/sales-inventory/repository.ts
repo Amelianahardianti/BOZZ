@@ -28,9 +28,10 @@ import {
   nextTicketId,
   nextTicketItemId,
   Ticket,
+  TicketStatus,
 } from './internal/store';
 import { StockChangeReason } from '../../shared/event-bus';
-import { conflict, notFound } from '../../shared/errors';
+import { badRequest, conflict, notFound } from '../../shared/errors';
 
 // ---------------------------------------------------------------------
 // Categories
@@ -537,6 +538,50 @@ export async function findTicketByExternalOrderId(
   return tickets.find((t) => t.external_order_id === externalOrderId) ?? null;
 }
 
+export interface ListTicketsFilter {
+  status?: TicketStatus;
+  assignedToUserId?: string;
+  /** Kalau `limit` tidak diisi, semua hasil dikembalikan tanpa dipotong. */
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Cari ticket dengan filter penerima dan/atau status.
+ *
+ * Kombinasi filternya sengaja (assigned_to_user_id, status) -- persis
+ * kolom `idx_tickets_assignee_status` di prisma/schema.prisma. Jadi waktu
+ * versi Postgres-nya dibikin, query ini tinggal jalan lewat index itu
+ * tanpa perlu ubah bentuk filter di layer atas.
+ */
+export async function listTickets(filter: ListTicketsFilter): Promise<Ticket[]> {
+  // Urutan penyimpanan dibawa sebagai penentu kedua: dua ticket bisa
+  // dibuat dalam milidetik yang sama, dan tanpa ini urutannya tidak
+  // menentu antar halaman.
+  const matched = tickets
+    .map((ticket, urutanSimpan) => ({ ticket, urutanSimpan }))
+    .filter(({ ticket: t }) => {
+      if (filter.status && t.status !== filter.status) return false;
+      if (filter.assignedToUserId && t.assigned_to_user_id !== filter.assignedToUserId) {
+        return false;
+      }
+      return true;
+    });
+
+  // Ini antrean kerja, bukan laporan: yang paling lama menunggu muncul
+  // duluan supaya order lama tidak keburu lewat batas waktu kirim.
+  matched.sort(
+    (a, b) =>
+      a.ticket.created_at.localeCompare(b.ticket.created_at) || a.urutanSimpan - b.urutanSimpan
+  );
+
+  const hasil = matched.map((m) => m.ticket);
+  if (filter.limit === undefined) return hasil;
+
+  const start = ((filter.page ?? 1) - 1) * filter.limit;
+  return hasil.slice(start, start + filter.limit);
+}
+
 export async function createTicket(input: {
   external_order_id: string;
   assigned_to_user_id: string;
@@ -569,4 +614,88 @@ export async function createTicket(input: {
 
   tickets.push(ticket);
   return ticket;
+}
+
+/**
+ * Pindahkan ticket ke pengepak lain (atau isi penerima yang tadinya
+ * kosong). Statusnya ikut jadi `assigned` karena sekarang sudah jelas
+ * siapa yang mengerjakan.
+ */
+export async function assignTicket(input: {
+  ticket_id: string;
+  assigned_to_user_id: string;
+  assigned_by: string;
+}): Promise<Ticket> {
+  const ticket = tickets.find((t) => t.id === input.ticket_id);
+  if (!ticket) {
+    throw notFound('Ticket tidak ditemukan.');
+  }
+
+  const now = new Date().toISOString();
+  ticket.assigned_to_user_id = input.assigned_to_user_id;
+  ticket.assigned_by = input.assigned_by;
+  ticket.assigned_at = now;
+  ticket.status = 'assigned';
+  ticket.updated_at = now;
+
+  return ticket;
+}
+
+/** Status terakhir dalam alur -- ticket yang sudah sampai sini selesai. */
+const TICKET_STATUS_TERMINAL: TicketStatus = 'handed_over';
+
+/**
+ * Update status ticket dan/atau centang checklist item-nya sekaligus.
+ *
+ * Seluruh isi fungsi ini sinkron dan memeriksa dulu sebelum menulis,
+ * sama seperti commitCheckout: kalau ada satu id item yang salah, tidak
+ * ada satu pun centang yang terlanjur tersimpan.
+ *
+ * `baruSajaSelesai` = ticket ini BARU saja lengkap centangnya di request
+ * ini (sebelumnya belum). Dipakai pemanggil buat memutuskan perlu tidaknya
+ * mengabari modul lain -- dikembalikan dari sini karena cuma di dalam
+ * blok sinkron ini keadaan "sebelum" dan "sesudah" bisa dibandingkan
+ * tanpa disela request lain.
+ */
+export async function updateTicketProgress(input: {
+  ticket_id: string;
+  status?: TicketStatus;
+  items?: { id: string; is_packed: boolean }[];
+}): Promise<{ ticket: Ticket; baruSajaSelesai: boolean }> {
+  // Tahap 1: periksa, belum ada yang diubah.
+  const ticket = tickets.find((t) => t.id === input.ticket_id);
+  if (!ticket) {
+    throw notFound('Ticket tidak ditemukan.');
+  }
+  if (ticket.status === TICKET_STATUS_TERMINAL) {
+    throw conflict('Ticket ini sudah diserahkan dan tidak bisa diubah lagi.');
+  }
+
+  const perubahanItem = (input.items ?? []).map((perubahan) => {
+    const item = ticket.items.find((i) => i.id === perubahan.id);
+    if (!item) {
+      throw badRequest(`Item ${perubahan.id} bukan bagian dari ticket ini.`);
+    }
+    return { item, is_packed: perubahan.is_packed };
+  });
+
+  const semuaSelesaiSebelum = ticket.items.every((i) => i.is_packed);
+
+  // Tahap 2: baru tulis.
+  const now = new Date().toISOString();
+  for (const { item, is_packed } of perubahanItem) {
+    item.is_packed = is_packed;
+  }
+  if (input.status) {
+    ticket.status = input.status;
+    // Ticket dianggap tuntas saat barangnya benar-benar diserahkan.
+    if (input.status === TICKET_STATUS_TERMINAL) {
+      ticket.completed_at = now;
+    }
+  }
+  ticket.updated_at = now;
+
+  const semuaSelesaiSesudah = ticket.items.every((i) => i.is_packed);
+
+  return { ticket, baruSajaSelesai: !semuaSelesaiSebelum && semuaSelesaiSesudah };
 }
