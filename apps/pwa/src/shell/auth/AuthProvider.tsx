@@ -1,17 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { AuthContext, STORAGE_KEY, type AuthContextValue, type AuthSession } from './auth-context'
-
-function readStoredSession(): AuthSession | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as AuthSession
-  } catch {
-    // localStorage gak bisa diakses (mis. private mode) atau isinya
-    // rusak -- anggap aja belum login, bukan bikin app crash.
-    return null
-  }
-}
+import { AuthContext, readStoredSession, STORAGE_KEY, type AuthContextValue, type AuthSession } from './auth-context'
 
 /**
  * Nyimpen sesi login di memori (React state) + localStorage, biar

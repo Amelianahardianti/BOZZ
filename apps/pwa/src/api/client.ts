@@ -27,10 +27,12 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
   token?: string
+  /** Header tambahan di luar Content-Type/Authorization, mis. Idempotency-Key (SRS 9.3). */
+  headers?: Record<string, string>
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...options.headers }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
   if (options.token) headers.Authorization = `Bearer ${options.token}`
 
