@@ -11,6 +11,7 @@
 // cepat, tidak butuh koneksi Supabase, dan tidak numpuk data test ke
 // DB beneran tiap kali dijalankan.
 
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import request from 'supertest';
 import { app, toErrorResponse } from '../src/app';
 import { AppError, badRequest, conflict } from '../src/shared/errors';
