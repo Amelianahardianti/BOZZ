@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import * as repo from './repository';
 import { Role, User } from './repository';
+import { users as dummyUsers } from './internal/store';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-ganti-di-production';
 const JWT_EXPIRES_IN = '8h'; // sesi login berlaku 8 jam, sesuaikan kalau perlu
@@ -107,7 +108,7 @@ export async function deactivateStaff(id: string) {
 
 /**
  * Data akun seperlunya buat dipakai modul lain -- sengaja bukan seluruh
- * User, biar field sensitif tidak ikut menyebar ke mana-mana.
+ * User, biar field sensitif (password_hash, dll) tidak ikut menyebar.
  */
 export interface UserSummary {
   id: string;
@@ -115,18 +116,127 @@ export interface UserSummary {
   role: Role;
 }
 
+/** Ciri-ciri error koneksi DB gagal (bukan "user tidak ada", yang itu bukan error). */
+function isDbUnavailable(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = 'code' in err ? String((err as { code?: unknown }).code ?? '') : '';
+  const message = 'message' in err ? String((err as { message?: unknown }).message ?? '') : '';
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ECONNRESET' ||
+    /ECONNREFUSED|ENOTFOUND|ECONNRESET|timeout|could not connect/i.test(message)
+  );
+}
+
 /**
- * Cari akun yang MASIH AKTIF. Dibuka lewat index.ts karena modul lain
+ * Cari akun yang MASIH AKTIF. Diekspor lewat index.ts karena modul lain
  * perlu memastikan sebuah akun benar ada, aktif, dan rolenya sesuai --
  * misalnya sales-inventory yang harus memastikan ticket packing
  * di-assign ke Pengepak, bukan ke kasir atau akun yang sudah nonaktif.
  * Modul yang bertanggung jawab atas data user adalah modul ini, jadi
- * pengecekannya juga tinggal di sini.
+ * pengecekannya juga tinggal di sini (bukan di sales-inventory).
+ *
+ * Kalau Supabase lagi gak bisa diakses (bukan "user-nya emang gak
+ * ada" -- itu tetap null), fallback ke data dummy di internal/store.ts
+ * biar modul lain tidak ikut macet gara-gara DB gratisan lagi down.
  *
  * @returns null kalau akunnya tidak ada atau sudah dinonaktifkan.
  */
 export async function findActiveUser(id: string): Promise<UserSummary | null> {
-  const user = await repo.findById(id);
-  if (!user || !user.is_active) return null;
-  return { id: user.id, name: user.name, role: user.role };
+  try {
+    const user = await repo.findById(id);
+    if (!user || !user.is_active) return null;
+    return { id: user.id, name: user.name, role: user.role };
+  } catch (err) {
+    if (!isDbUnavailable(err)) throw err;
+
+    const dummy = dummyUsers.find((u) => u.id === id);
+    if (!dummy || !dummy.is_active) return null;
+    return { id: dummy.id, name: dummy.name, role: dummy.role };
+  }
+}
+
+// Tabel store_settings sengaja didesain cuma 1 baris (profil toko
+// tunggal), tapi tidak ada endpoint khusus untuk bikin baris pertamanya
+// (lihat contracts/api.yaml -- cuma GET & PATCH). Jadi baris default
+// dibuat otomatis (lazy) begitu ada yang butuh, baik lewat GET pertama
+// kali maupun PATCH pertama kali.
+export async function getStoreSettings() {
+  const existing = await repo.getStoreSettings();
+  if (existing) {
+    return existing;
+  }
+  return repo.createStoreSettings({ business_name: 'Toko Saya' });
+}
+
+export async function updateStoreSettings(
+  changes: {
+    business_name?: string;
+    address?: string;
+    phone?: string;
+    receipt_footer_note?: string;
+    logo_url?: string;
+  },
+  updatedByUserId: string
+) {
+  const existing = await repo.getStoreSettings();
+
+  if (!existing) {
+    return repo.createStoreSettings({
+      business_name: changes.business_name ?? 'Toko Saya',
+      address: changes.address,
+      phone: changes.phone,
+      receipt_footer_note: changes.receipt_footer_note,
+      logo_url: changes.logo_url,
+      updated_by: updatedByUserId,
+    });
+  }
+
+  const updated = await repo.updateStoreSettings(existing.id, changes, updatedByUserId);
+  if (!updated) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Pengaturan toko tidak ditemukan.' };
+  }
+  return updated;
+}
+
+export async function listNotifications(
+  userId: string,
+  filters: { isRead?: boolean; page: number; limit: number }
+) {
+  return repo.listNotificationsByUser(userId, filters);
+}
+
+export async function markNotificationRead(id: string, userId: string) {
+  const existing = await repo.findNotificationById(id);
+  // Disamarkan jadi 404 (bukan 403) kalau notifikasi itu bukan
+  // punya user yang lagi login -- staf lain tidak perlu tahu notifikasi
+  // itu ada sama sekali.
+  if (!existing || existing.user_id !== userId) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Notifikasi tidak ditemukan.' };
+  }
+
+  const updated = await repo.markNotificationRead(id);
+  return updated!;
+}
+
+// Dipakai modul lain (Sales & Inventory saat assign ticket, Order Hub
+// saat order baru masuk) lewat shared/interfaces -- lihat SRS 9.6.
+// Bukan endpoint HTTP, dipanggil langsung sebagai function call.
+export async function createNotification(input: {
+  userId: string;
+  type: string;
+  title: string;
+  message?: string;
+  referenceType?: 'external_order' | 'ticket';
+  referenceId?: string;
+}) {
+  return repo.createNotification({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    reference_type: input.referenceType,
+    reference_id: input.referenceId,
+  });
 }

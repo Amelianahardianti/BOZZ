@@ -6,7 +6,7 @@
 
 import type { PlatformAdapter, NormalizedOrder } from '../../types';
 import { upsertPlatformToken } from '../../repository';
-import { getCarts, getProducts, getUser, type FakeStoreCart } from './api.client';
+import { getCarts, getProducts, getUser, putCart, type FakeStoreCart } from './api.client';
 
 const PLATFORM_NAME = 'fakestore';
 const SHOP_ID = 'fakestore-demo-shop';
@@ -62,5 +62,16 @@ export const fakestoreAdapter: PlatformAdapter = {
     const [carts, products] = await Promise.all([getCarts(), getProducts()]);
     const productPrice = new Map(products.map((p) => [p.id, { title: p.title, price: p.price }]));
     return Promise.all(carts.map((cart) => mapCart(cart, productPrice)));
+  },
+
+  // FakeStoreAPI tidak punya konsep/persistensi status order sama sekali
+  // (lihat komentar di mapCart di atas) -- PUT /carts/:id ini CUMA
+  // simulator outbound status sync, buat membuktikan pipeline forward
+  // (service.ts forwardStatusToPlatform -> adapter -> HTTP keluar) beneran
+  // jalan end-to-end. Bukan integrasi status yang valid: FakeStoreAPI tidak
+  // memvalidasi atau menyimpan body ini.
+  updateOrderStatusOnPlatform: async (_creds, externalOrderId, status) => {
+    const cartId = Number(externalOrderId.replace('CART-', ''));
+    await putCart(cartId, { status });
   },
 };

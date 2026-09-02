@@ -1,0 +1,333 @@
+{
+  "info": {
+    "name": "POS PWA - Store Settings & Notifications",
+    "description": "Koleksi terpisah, khusus buat uji coba 2 fitur Fase 2 (Store Settings & Notifications) tanpa nyampur sama koleksi auth-product yang besar -- biar gampang dites ulang dari nol tanpa kepikiran urutan folder lain.\n\nCara pakai:\n1. Buka tab 'Variables' di koleksi ini, isi owner_username/owner_password sesuai akun Owner kamu, dan kasir_username/kasir_password sesuai akun Kasir yang SUDAH ADA & masih aktif (kalau belum ada, bikin dulu lewat POST /staff pakai koleksi auth-product).\n2. Jalankan folder '0. Login' dari atas ke bawah (Login Owner dulu, baru Login Kasir) -- token otomatis kesimpen ke owner_token & kasir_token.\n3. Baru jalankan folder 1 & 2.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api" },
+    { "key": "owner_username", "value": "owner" },
+    { "key": "owner_password", "value": "owner123" },
+    { "key": "kasir_username", "value": "" },
+    { "key": "kasir_password", "value": "" },
+    { "key": "owner_token", "value": "" },
+    { "key": "kasir_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Login",
+      "item": [
+        {
+          "name": "Login - Owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('Ada token', function () { pm.expect(body.token).to.be.a('string'); });",
+                  "if (body.token) { pm.collectionVariables.set('owner_token', body.token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email_or_username\": \"{{owner_username}}\",\n  \"password\": \"{{owner_password}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Login - Kasir",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('Ada token', function () { pm.expect(body.token).to.be.a('string'); });",
+                  "if (body.token) { pm.collectionVariables.set('kasir_token', body.token); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email_or_username\": \"{{kasir_username}}\",\n  \"password\": \"{{kasir_password}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "description": "Kalau ini gagal 401, cek dulu: akun kasirnya ada & is_active=true? Kalau belum ada, bikin dulu lewat POST /staff (koleksi auth-product) sebelum lanjut."
+        }
+      ]
+    },
+    {
+      "name": "1. Store Settings",
+      "item": [
+        {
+          "name": "GET /store-settings - Owner (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Ada business_name', function () { pm.expect(pm.response.json()).to.have.property('business_name'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "GET /store-settings - Tanpa Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "GET /store-settings - Kasir (harus 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });",
+                  "pm.test('Kode error FORBIDDEN', function () { pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{kasir_token}}" }],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "PATCH /store-settings - Owner (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('business_name berubah', function () { pm.expect(pm.response.json().business_name).to.eql('Toko Ayam Bunda'); });",
+                  "pm.test('updated_by kesimpen', function () { pm.expect(pm.response.json().updated_by).to.not.be.null; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Toko Ayam Bunda\",\n  \"address\": \"Jl. Kaliurang KM 5, Sleman\",\n  \"phone\": \"081234567890\",\n  \"receipt_footer_note\": \"Terima kasih sudah belanja!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "PATCH /store-settings - business_name Kosong (harus 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Kode error VALIDATION_ERROR', function () { pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"business_name\": \"\"\n}" },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "PATCH /store-settings - Kasir (harus 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status 403', function () { pm.response.to.have.status(403); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{kasir_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"business_name\": \"Nyoba Ganti Nama Toko\"\n}" },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Notifications",
+      "description": "Tidak ada endpoint POST publik buat notifikasi (memang disengaja -- dibuat dari dalam backend lewat createNotification(), dipanggil modul lain). Jadi request di sini cuma uji struktur response, RBAC, & validasi.",
+      "item": [
+        {
+          "name": "GET /notifications - Owner (harus 200, array)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "GET /notifications?is_read=false - Owner (harus 200, array)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/notifications?is_read=false&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "is_read", "value": "false" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /notifications - Tanpa Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "GET /notifications - Kasir (harus 200, semua role login boleh akses)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 -- bukan 403', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{kasir_token}}" }],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "PATCH /notifications/:id/read - ID Tidak Ada (harus 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('Kode error NOT_FOUND', function () { pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/notifications/00000000-0000-0000-0000-000000000000/read",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "00000000-0000-0000-0000-000000000000", "read"]
+            }
+          }
+        },
+        {
+          "name": "PATCH /notifications/:id/read - Tanpa Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('Status 401', function () { pm.response.to.have.status(401); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/00000000-0000-0000-0000-000000000000/read",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "00000000-0000-0000-0000-000000000000", "read"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

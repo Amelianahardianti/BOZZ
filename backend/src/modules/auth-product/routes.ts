@@ -13,32 +13,17 @@ import { requireAuth, requireRole, AuthenticatedRequest } from '../../shared/mid
 
 export const router = Router();
 
-function normalizeUsernameInput<T extends { email_or_username?: string; username?: string }>(input: T) {
-  const resolvedUsername = input.email_or_username ?? input.username;
-  if (!resolvedUsername) {
-    return input;
-  }
-
-  return {
-    ...input,
-    email_or_username: resolvedUsername,
-  };
-}
-
 // ---------- POST /api/auth/login ----------
-const loginSchema = z
-  .object({
-    email_or_username: z.string().min(1).optional(),
-    username: z.string().min(1).optional(),
-    password: z.string().min(1),
-  })
-  .transform((body) => normalizeUsernameInput(body));
+const loginSchema = z.object({
+  email_or_username: z.string().min(1),
+  password: z.string().min(1),
+});
 
 router.post(
   '/auth/login',
   asyncHandler(async (req, res) => {
     const body = loginSchema.parse(req.body);
-    const result = await service.login(body.email_or_username!, body.password);
+    const result = await service.login(body.email_or_username, body.password);
     res.status(200).json(result);
   })
 );
@@ -73,16 +58,13 @@ router.get(
 );
 
 // ---------- POST /api/staff ----------
-const createStaffSchema = z
-  .object({
-    name: z.string().min(1),
-    email_or_username: z.string().min(1).optional(),
-    username: z.string().min(1).optional(),
-    password: z.string().min(6, 'Password minimal 6 karakter'),
-    role: z.enum(['kasir', 'pengepak']),
-    phone: z.string().optional(),
-  })
-  .transform((body) => normalizeUsernameInput(body));
+const createStaffSchema = z.object({
+  name: z.string().min(1),
+  email_or_username: z.string().min(1),
+  password: z.string().min(6, 'Password minimal 6 karakter'),
+  role: z.enum(['kasir', 'pengepak']),
+  phone: z.string().optional(),
+});
 
 router.post(
   '/staff',
@@ -92,7 +74,6 @@ router.post(
     const body = createStaffSchema.parse(req.body);
     const newStaff = await service.createStaff({
       ...body,
-      email_or_username: body.email_or_username!,
       createdByUserId: req.user!.id,
     });
     res.status(201).json(newStaff);
@@ -100,15 +81,12 @@ router.post(
 );
 
 // ---------- PATCH /api/staff/:id ----------
-const updateStaffSchema = z
-  .object({
-    name: z.string().min(1).optional(),
-    email_or_username: z.string().min(1).optional(),
-    username: z.string().min(1).optional(),
-    role: z.enum(['kasir', 'pengepak']).optional(),
-    phone: z.string().optional(),
-  })
-  .transform((body) => normalizeUsernameInput(body));
+const updateStaffSchema = z.object({
+  name: z.string().min(1).optional(),
+  email_or_username: z.string().min(1).optional(),
+  role: z.enum(['kasir', 'pengepak']).optional(),
+  phone: z.string().optional(),
+});
 
 router.patch(
   '/staff/:id',
@@ -128,6 +106,71 @@ router.patch(
   requireRole('owner'),
   asyncHandler(async (req, res) => {
     const updated = await service.deactivateStaff(req.params.id);
+    res.status(200).json(updated);
+  })
+);
+
+// ---------- GET /api/store-settings ----------
+router.get(
+  '/store-settings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (_req, res) => {
+    const settings = await service.getStoreSettings();
+    res.status(200).json(settings);
+  })
+);
+
+// ---------- PATCH /api/store-settings ----------
+const updateStoreSettingsSchema = z.object({
+  business_name: z.string().min(1).optional(),
+  address: z.string().optional(),
+  phone: z.string().optional(),
+  receipt_footer_note: z.string().optional(),
+  logo_url: z.string().optional(),
+});
+
+router.patch(
+  '/store-settings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const body = updateStoreSettingsSchema.parse(req.body);
+    const updated = await service.updateStoreSettings(body, req.user!.id);
+    res.status(200).json(updated);
+  })
+);
+
+// ---------- GET /api/notifications ----------
+const listNotificationsQuerySchema = z.object({
+  is_read: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+});
+
+router.get(
+  '/notifications',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const query = listNotificationsQuerySchema.parse(req.query);
+    const notifications = await service.listNotifications(req.user!.id, {
+      isRead: query.is_read,
+      page: query.page,
+      limit: query.limit,
+    });
+    res.status(200).json(notifications);
+  })
+);
+
+// ---------- PATCH /api/notifications/:id/read ----------
+router.patch(
+  '/notifications/:id/read',
+  requireAuth,
+  asyncHandler(async (req: AuthenticatedRequest, res) => {
+    const updated = await service.markNotificationRead(req.params.id, req.user!.id);
     res.status(200).json(updated);
   })
 );

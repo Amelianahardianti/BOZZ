@@ -459,6 +459,298 @@
           }
         }
       ]
+    },
+    {
+      "name": "5. Store Settings (harus login sebagai Owner)",
+      "item": [
+        {
+          "name": "Get Store Settings - Pertama Kali (harus 200, lazy-create default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Ada business_name default', function () { pm.expect(pm.response.json()).to.have.property('business_name'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Get Store Settings - TANPA Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Get Store Settings - Sebagai Kasir (harus 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{kasir_token}}" }],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Update Store Settings - Isi Profil Toko (harus 200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('business_name berubah', function () { pm.expect(pm.response.json().business_name).to.eql('Toko Ayam Bunda'); });",
+                  "pm.test('updated_by kesimpen', function () { pm.expect(pm.response.json().updated_by).to.not.be.null; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Toko Ayam Bunda\",\n  \"address\": \"Jl. Kaliurang KM 5, Sleman\",\n  \"phone\": \"081234567890\",\n  \"receipt_footer_note\": \"Terima kasih sudah belanja!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Get Store Settings - Setelah Update (harus 200, data konsisten)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('business_name sesuai update sebelumnya', function () { pm.expect(pm.response.json().business_name).to.eql('Toko Ayam Bunda'); });",
+                  "pm.test('address sesuai update sebelumnya', function () { pm.expect(pm.response.json().address).to.eql('Jl. Kaliurang KM 5, Sleman'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Update Store Settings - business_name Kosong (harus 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Kode error VALIDATION_ERROR', function () { pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        },
+        {
+          "name": "Update Store Settings - Sebagai Kasir (harus 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{kasir_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Nyoba Ganti Nama Toko\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/store-settings", "host": ["{{base_url}}"], "path": ["store-settings"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Notifications",
+      "description": "Endpoint POST buat notifikasi tidak ada (memang disengaja) -- notifikasi dibuat dari dalam backend saja lewat createNotification(), dipanggil modul Sales & Inventory (assign ticket) & Order Hub (order baru masuk). Jadi request di folder ini cuma bisa uji struktur response, RBAC (semua role login boleh akses), dan validasi -- bukan alur bikin notifikasi sampai jadi data beneran.",
+      "item": [
+        {
+          "name": "List Notifications - Sebagai Owner (harus 200, array)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response berupa array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "List Notifications - Filter is_read=false (harus 200, array)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response berupa array', function () { pm.expect(pm.response.json()).to.be.an('array'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/notifications?is_read=false&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "is_read", "value": "false" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Notifications - TANPA Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "List Notifications - Sebagai Kasir (harus 200, semua role login boleh akses)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 -- bukan 403, notifikasi bukan cuma buat Owner', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{kasir_token}}" }],
+            "url": { "raw": "{{base_url}}/notifications", "host": ["{{base_url}}"], "path": ["notifications"] }
+          }
+        },
+        {
+          "name": "Mark Read - ID Tidak Ada (harus 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', function () { pm.response.to.have.status(404); });",
+                  "pm.test('Kode error NOT_FOUND', function () { pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Authorization", "value": "Bearer {{owner_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/notifications/00000000-0000-0000-0000-000000000000/read",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "00000000-0000-0000-0000-000000000000", "read"]
+            }
+          }
+        },
+        {
+          "name": "Mark Read - TANPA Token (harus 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/notifications/00000000-0000-0000-0000-000000000000/read",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "00000000-0000-0000-0000-000000000000", "read"]
+            }
+          }
+        }
+      ]
     }
   ]
 }
