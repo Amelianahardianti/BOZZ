@@ -6,6 +6,7 @@ import { AppError, ErrorCode, notFound } from './shared/errors';
 import { router as salesInventoryRouter } from './modules/sales-inventory';
 import { router as ecommerceSyncRouter } from './modules/ecommerce-sync';
 import { router as authProductRouter } from './modules/auth-product';
+import { router as openapiRouter } from './shared/openapi';
 
 export const app = express();
 
@@ -19,6 +20,11 @@ app.use(
     },
   })
 );
+
+// Swagger UI di /api/docs. Didaftarkan sebelum router modul supaya jelas
+// prefix ini bukan milik salah satu modul, dan jauh sebelum jaring
+// not-found di bawah.
+app.use('/api', openapiRouter);
 
 // Daftarkan router tiap modul sesuai prefix di contracts/api.yaml
 app.use('/api', salesInventoryRouter);
