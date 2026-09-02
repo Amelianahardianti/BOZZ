@@ -33,3 +33,14 @@ export async function getUser(userId: number): Promise<FakeStoreUser | null> {
   if (!res.ok) return null;
   return (await res.json()) as FakeStoreUser;
 }
+
+// PUT /carts/:id -- FakeStoreAPI menerima body apapun dan membalas sukses
+// tanpa benar-benar persist (khas fake REST API). Dipakai adapter sebagai
+// simulator outbound status sync, bukan update yang benar-benar tersimpan.
+export async function putCart(cartId: number, body: unknown): Promise<void> {
+  await fetch(`${HOST}/carts/${cartId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
