@@ -20,11 +20,16 @@ export interface FakeStoreUser {
 
 export async function getProducts(): Promise<FakeStoreProduct[]> {
   const res = await fetch(`${HOST}/products`);
+  // Konsisten dengan getUser() di bawah -- tanpa ini, respons non-JSON
+  // (mis. halaman error 5xx dari FakeStoreAPI) bikin res.json() gagal
+  // dengan SyntaxError yang membingungkan, bukan pesan yang jelas.
+  if (!res.ok) throw new Error(`FakeStoreAPI GET /products gagal: HTTP ${res.status}`);
   return (await res.json()) as FakeStoreProduct[];
 }
 
 export async function getCarts(): Promise<FakeStoreCart[]> {
   const res = await fetch(`${HOST}/carts`);
+  if (!res.ok) throw new Error(`FakeStoreAPI GET /carts gagal: HTTP ${res.status}`);
   return (await res.json()) as FakeStoreCart[];
 }
 

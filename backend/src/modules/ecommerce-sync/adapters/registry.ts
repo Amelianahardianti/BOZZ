@@ -1,4 +1,5 @@
 import type { PlatformAdapter } from '../types';
+import { notFound } from '../../../shared/errors';
 import { shopeeAdapter } from './shopee';
 import { tiktokAdapter } from './tiktok';
 import { fakestoreAdapter } from './fakestore';
@@ -27,6 +28,9 @@ export function isPlatformConfigured(platformName: string): boolean {
 
 export function getAdapter(platformName: string): PlatformAdapter {
   const adapter = platformAdapters[platformName];
-  if (!adapter) throw new Error(`Platform "${platformName}" tidak dikenal`);
+  // AppError (bukan Error polos) -- supaya lewat error handler pusat jadi
+  // 404 yang jelas ("platform tidak dikenal"), bukan 500 generik yang
+  // menyembunyikan pesan aslinya (Step 8 hardening).
+  if (!adapter) throw notFound(`Platform "${platformName}" tidak dikenal.`);
   return adapter;
 }

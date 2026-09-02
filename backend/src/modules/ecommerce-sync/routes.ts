@@ -77,11 +77,19 @@ router.post(
 router.post(
   '/webhooks/:platform',
   asyncHandler(async (req: Request & { rawBody?: Buffer }, res) => {
-    const rawBody = (req.rawBody ?? Buffer.from(JSON.stringify(req.body))).toString('utf8');
+    // req.body bisa `undefined` kalau Content-Type bukan application/json
+    // (express.json melewatkan parsing-nya) -- fallback ini jangan sampai
+    // ikut crash gara-gara JSON.stringify(undefined) -> undefined.
+    const rawBody = (req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}))).toString('utf8');
     const headers = req.headers as Record<string, string | string[] | undefined>;
 
-    // Verifikasi dilakukan SEBELUM balas 200 (kontrak: 401 kalau signature
-    // invalid) — bedanya dengan proses detail order, yang baru async setelahnya.
+    // Verifikasi BENAR-BENAR dilakukan sebelum balas apapun (SRS 9.5,
+    // contracts/api.yaml: 401 kalau signature invalid) -- throw di sini
+    // ditangkap asyncHandler, lempar ke error handler pusat, BUKAN 200.
+    service.verifyWebhookRequest(req.params.platform, rawBody, headers);
+
+    // Baru sampai sini kalau signature valid -> balas cepat (SRS 9.5),
+    // proses detail order-nya async supaya platform tidak retry-storm.
     res.status(200).json({ received: true });
 
     try {
