@@ -10,11 +10,10 @@ const mockTiktok = process.env.MOCK_TIKTOK === 'true';
 export const platformAdapters: Record<string, PlatformAdapter> = {
   shopee: mockShopee ? createMockAdapter('shopee', process.env.SHOPEE_REDIRECT_URI ?? '') : shopeeAdapter,
   tiktok: mockTiktok ? createMockAdapter('tiktok', process.env.TIKTOK_REDIRECT_URI ?? '') : tiktokAdapter,
-  // Selalu aktif — tidak butuh credential sama sekali, dipakai buat
-  // pembuktian pipeline omnichannel selagi Shopee/TikTok menunggu credential asli.
-  // NOTE: 'tiktok' dan 'fakestore' belum ada di PlatformParam enum di
-  // contracts/api.yaml (masih [shopee, tokopedia]) — perlu diupdate oleh
-  // pemegang kontrak (Orang C) begitu tim sepakat platform ini masuk MVP.
+  // Selalu aktif — tidak butuh credential sama sekali, dipakai sebagai
+  // channel demo/multichannel (bukan cuma mock test) selagi Shopee/TikTok
+  // menunggu credential asli. Sudah terdaftar di PlatformParam enum
+  // (contracts/api.yaml).
   fakestore: fakestoreAdapter,
 };
 
