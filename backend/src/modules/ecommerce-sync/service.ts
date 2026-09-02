@@ -7,7 +7,7 @@
 import * as repo from './repository';
 import { getAdapter, isPlatformConfigured, platformAdapters } from './adapters/registry';
 import { classifySla, computeSlaDeadline } from './sla.util';
-import { notFound, conflict } from '../../shared/errors';
+import { notFound, conflict, unauthorized } from '../../shared/errors';
 import { publish, subscribe, EVENTS } from '../../shared/event-bus';
 import type { NormalizedOrder } from './types';
 
@@ -229,21 +229,50 @@ export async function searchCustomers(query: string) {
 // Webhook
 // ---------------------------------------------------------------------
 
+/**
+ * Verifikasi SAJA (tidak menyentuh DB/side effect apapun) -- dipanggil
+ * routes.ts SEBELUM balas response apapun ke pengirim webhook (SRS 9.5:
+ * "verifikasi sebelum balas 2xx"; contracts/api.yaml: 401 kalau signature
+ * tidak valid). Fungsi murni & cepat (HMAC compute doang), jadi aman
+ * dipanggil sinkron di jalur request-response tanpa melanggar SRS 9.8
+ * (proses BERAT yang tidak boleh blocking -- ini bukan itu).
+ *
+ * Platform yang tidak dikenal sama sekali -> 404 (lewat getAdapter()).
+ * Platform dikenal tapi belum dukung webhook (mis. FakeStore, Shopee
+ * sekarang) -> 409, bukan 401 -- ini bukan soal signature, tapi fitur
+ * yang memang belum ada untuk platform itu.
+ */
+export function verifyWebhookRequest(
+  platformName: string,
+  rawBody: string,
+  headers: Record<string, string | string[] | undefined>
+): void {
+  const adapter = getAdapter(platformName);
+  if (!adapter.verifyWebhookSignature || !adapter.normalizeWebhookPayload) {
+    throw conflict(`Webhook belum didukung untuk platform "${platformName}".`);
+  }
+  if (!adapter.verifyWebhookSignature(rawBody, headers)) {
+    throw unauthorized('Signature webhook tidak valid.');
+  }
+}
+
+/**
+ * Proses detail order dari webhook yang SUDAH lolos verifyWebhookRequest().
+ * Dipanggil async SETELAH response 2xx dikirim (SRS 9.5) -- tapi tetap
+ * memanggil verifyWebhookRequest() lagi di awal (murah, tanpa side effect)
+ * supaya fungsi ini aman dipanggil independen (mis. dari test atau
+ * reprocessing manual) tanpa bergantung urutan pemanggilan di routes.ts.
+ */
 export async function handleWebhook(
   platformName: string,
   rawBody: string,
   headers: Record<string, string | string[] | undefined>,
   payload: unknown
 ) {
-  const adapter = getAdapter(platformName);
-  if (!adapter.verifyWebhookSignature || !adapter.normalizeWebhookPayload) {
-    throw conflict(`Webhook belum didukung untuk platform "${platformName}".`);
-  }
-  if (!adapter.verifyWebhookSignature(rawBody, headers)) {
-    throw conflict('Signature webhook tidak valid.');
-  }
+  verifyWebhookRequest(platformName, rawBody, headers);
 
-  const normalized = adapter.normalizeWebhookPayload(payload);
+  const adapter = getAdapter(platformName);
+  const normalized = adapter.normalizeWebhookPayload!(payload);
   if (!normalized) return;
 
   const platformRow = await repo.findPlatformRow(platformName);
@@ -257,7 +286,21 @@ export async function handleWebhook(
 // packing selesai) diteruskan ke platform asal (SRS 8.2/§4.3).
 // ---------------------------------------------------------------------
 
+// Idempotency guard in-memory (Step 8) -- kalau event yang SAMA PERSIS
+// (order + status tujuan yang sama) entah kenapa terkirim lebih dari
+// sekali dalam 1 lifetime proses, jangan forward dobel ke platform. Bukan
+// idempotency lintas restart (event bus in-process memang tidak
+// persisten, sudah jadi batasan yang disepakati -- SRS 9.4), dan sengaja
+// per-(order, status) bukan per-order saja: satu order boleh melewati
+// beberapa status berbeda (new -> processing -> shipped -> ...), semua
+// tetap harus di-forward.
+const statusForwardedFor = new Set<string>();
+
 subscribe(EVENTS.ORDER_STATUS_CHANGED, async (payload) => {
+  const dedupKey = `${payload.external_order_id}:${payload.new_status}`;
+  if (statusForwardedFor.has(dedupKey)) return;
+  statusForwardedFor.add(dedupKey);
+
   const order = await repo.getExternalOrderDetailRow(payload.external_order_id).catch(() => null);
   if (!order) return;
   await forwardStatusToPlatform(order.platform_id, order.external_order_id, payload.new_status);

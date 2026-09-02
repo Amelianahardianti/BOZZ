@@ -4,12 +4,16 @@
 //
 // Dua lapis yang diuji terpisah:
 //
-//  1. handleWebhook() di service.ts -- branching logic: 409 CONFLICT kalau
-//     adapter bilang signature invalid, lanjut ke upsertExternalOrder()
-//     kalau valid, dan 409 juga kalau platform belum dukung webhook sama
-//     sekali. repository.ts & adapter registry di-mock -- verifyWebhookSignature
+//  1. handleWebhook() di service.ts -- branching logic: 401 UNAUTHORIZED
+//     kalau adapter bilang signature invalid (Step 8 hardening -- sebelumnya
+//     409, diperbaiki supaya sesuai SRS 9.5 & contracts/api.yaml yang dari
+//     awal sudah mendefinisikan 401 buat signature invalid), lanjut ke
+//     upsertExternalOrder() kalau valid, dan 409 (BUKAN 401 -- ini bukan
+//     soal signature) kalau platform belum dukung webhook sama sekali.
+//     repository.ts & adapter registry di-mock -- verifyWebhookSignature
 //     di-kontrol lewat mock adapter di sini supaya fokus ke branching-nya
-//     handleWebhook, BUKAN detail HMAC (itu bagian 2).
+//     handleWebhook, BUKAN detail HMAC (itu bagian 2). Test level HTTP
+//     (respons beneran 401, bukan 200 duluan) ada di webhook-http.test.ts.
 //
 //  2. tiktokAdapter.verifyWebhookSignature() ASLI (HMAC-SHA256) -- TIDAK
 //     di-mock sama sekali. TIKTOK_APP_KEY/TIKTOK_APP_SECRET di-override ke
@@ -47,14 +51,14 @@ afterEach(() => {
 });
 
 describe('handleWebhook — branching berdasarkan verifyWebhookSignature', () => {
-  it('signature invalid -> throw CONFLICT (409), pipeline order TIDAK dijalankan', async () => {
+  it('signature invalid -> throw UNAUTHORIZED (401), pipeline order TIDAK dijalankan', async () => {
     const verifyWebhookSignature = jest.fn<NonNullable<PlatformAdapter['verifyWebhookSignature']>>().mockReturnValue(false);
     const normalizeWebhookPayload = jest.fn<NonNullable<PlatformAdapter['normalizeWebhookPayload']>>();
     mockedGetAdapter.mockReturnValue(fakeAdapter({ verifyWebhookSignature, normalizeWebhookPayload }));
 
     await expect(handleWebhook('tiktok', 'raw-body', {}, {})).rejects.toMatchObject({
-      status: 409,
-      code: 'CONFLICT',
+      status: 401,
+      code: 'UNAUTHORIZED',
     });
 
     expect(verifyWebhookSignature).toHaveBeenCalledWith('raw-body', {});

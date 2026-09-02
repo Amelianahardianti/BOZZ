@@ -144,4 +144,56 @@ describe('ORDER_STATUS_CHANGED consumer (service.ts:260, production, tidak di-mo
     expect(mockedRepo.findPlatformById).toHaveBeenCalledWith('platform-uuid-tidak-ada');
     expect(fakestoreAdapterMock.updateOrderStatusOnPlatform).not.toHaveBeenCalled();
   });
+
+  it('event (order, status) yang SAMA PERSIS terkirim dua kali -> forward ke adapter cuma sekali (Step 8 idempotency)', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue({
+      id: 'order-uuid-3',
+      platform_id: 'platform-uuid-fakestore',
+      external_order_id: 'CART-777',
+    } as Awaited<ReturnType<typeof repo.getExternalOrderDetailRow>>);
+    mockedRepo.findPlatformById.mockResolvedValue({
+      id: 'platform-uuid-fakestore',
+      platform_name: 'fakestore',
+    } as Awaited<ReturnType<typeof repo.findPlatformById>>);
+
+    const payload = { external_order_id: 'order-uuid-3', new_status: 'processing' as const };
+
+    publish(EVENTS.ORDER_STATUS_CHANGED, payload);
+    await flushAsyncListeners();
+    publish(EVENTS.ORDER_STATUS_CHANGED, payload);
+    await flushAsyncListeners();
+
+    expect(fakestoreAdapterMock.updateOrderStatusOnPlatform).toHaveBeenCalledTimes(1);
+  });
+
+  it('order yang sama tapi status BERBEDA -> tetap di-forward keduanya (dedup per (order, status), bukan per order saja)', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue({
+      id: 'order-uuid-4',
+      platform_id: 'platform-uuid-fakestore',
+      external_order_id: 'CART-888',
+    } as Awaited<ReturnType<typeof repo.getExternalOrderDetailRow>>);
+    mockedRepo.findPlatformById.mockResolvedValue({
+      id: 'platform-uuid-fakestore',
+      platform_name: 'fakestore',
+    } as Awaited<ReturnType<typeof repo.findPlatformById>>);
+
+    publish(EVENTS.ORDER_STATUS_CHANGED, { external_order_id: 'order-uuid-4', new_status: 'processing' });
+    await flushAsyncListeners();
+    publish(EVENTS.ORDER_STATUS_CHANGED, { external_order_id: 'order-uuid-4', new_status: 'shipped' });
+    await flushAsyncListeners();
+
+    expect(fakestoreAdapterMock.updateOrderStatusOnPlatform).toHaveBeenCalledTimes(2);
+    expect(fakestoreAdapterMock.updateOrderStatusOnPlatform).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      'CART-888',
+      'processing'
+    );
+    expect(fakestoreAdapterMock.updateOrderStatusOnPlatform).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      'CART-888',
+      'shipped'
+    );
+  });
 });
