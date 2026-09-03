@@ -33,7 +33,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh flex-col bg-slate-50 md:flex-row">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white p-4 md:flex">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-slate-200 bg-white p-4 md:flex print:hidden">
         <p className="mb-4 px-2 text-sm font-semibold text-slate-900">POS PWA</p>
         <nav className="flex flex-1 flex-col gap-1">
           {visibleNavItems.map((item) => (
@@ -58,7 +58,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex flex-1 flex-col pb-16 md:pb-0">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:hidden print:hidden">
           <p className="text-sm font-semibold text-slate-900">POS PWA</p>
           {session && (
             <button type="button" onClick={handleLogout} className="text-sm font-medium text-slate-500">
@@ -67,12 +67,12 @@ export function AppShell() {
           )}
         </header>
 
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 print:p-0">
           <Outlet />
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 flex gap-x-0.5 overflow-x-auto border-t border-slate-200 bg-white px-1 md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 flex gap-x-0.5 overflow-x-auto border-t border-slate-200 bg-white px-1 md:hidden print:hidden">
         {visibleNavItems.map((item) => (
           <NavLink key={item.path} to={item.path} className={({ isActive }) => tabClasses(isActive)}>
             {item.label}

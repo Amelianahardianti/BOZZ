@@ -47,14 +47,14 @@ describe('ReceiptView', () => {
   it('nampilin item, subtotal, uang diterima, dan kembalian yang bener', () => {
     render(<ReceiptView checkout={buildCheckout()} onNewTransaction={vi.fn()} />)
 
-    expect(screen.getByText(/Kopi Susu/)).toBeInTheDocument()
-    expect(screen.getByText(/x2/)).toBeInTheDocument()
+    expect(screen.getByText('Kopi Susu')).toBeInTheDocument()
+    expect(screen.getByText(/2 x Rp\s*18\.000/)).toBeInTheDocument()
     expect(screen.getAllByText(/Rp\s*36\.000/).length).toBeGreaterThan(0) // subtotal (juga muncul di baris item)
-    expect(screen.getByText(/Rp\s*50\.000/)).toBeInTheDocument() // uang diterima
+    expect(screen.getByText(/Rp\s*50\.000/)).toBeInTheDocument() // diterima
     expect(screen.getByText(/Rp\s*14\.000/)).toBeInTheDocument() // kembalian = 50000-36000
   })
 
-  it('transfer/ewallet -- gak nampilin baris uang diterima/kembalian sama sekali', () => {
+  it('transfer/ewallet -- gak nampilin baris diterima/kembali sama sekali', () => {
     render(
       <ReceiptView
         checkout={buildCheckout({ paymentMethod: 'transfer', amountPaid: null })}
@@ -62,8 +62,8 @@ describe('ReceiptView', () => {
       />,
     )
 
-    expect(screen.queryByText('Uang diterima')).not.toBeInTheDocument()
-    expect(screen.queryByText('Kembalian')).not.toBeInTheDocument()
+    expect(screen.queryByText('Diterima')).not.toBeInTheDocument()
+    expect(screen.queryByText('Kembali')).not.toBeInTheDocument()
   })
 
   it('tombol Cetak Struk manggil window.print()', async () => {

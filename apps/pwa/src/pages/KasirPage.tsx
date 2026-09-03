@@ -97,7 +97,7 @@ export function KasirPage() {
 
   return (
     <div className="flex h-[calc(100svh-8rem)] flex-col md:h-[calc(100svh-3rem)]">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs print:hidden">
         <h1 className="mr-1 text-sm font-semibold text-slate-900">Kasir</h1>
         <span className={`rounded-full px-2 py-0.5 font-medium ${online ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
           {online ? 'Online' : 'Offline -- transaksi tetap kesimpen'}

@@ -1,6 +1,6 @@
 import type { PaymentMethod, TransactionType } from '../../api/transactions'
 import { formatRupiah } from '../../shell/currency'
-import { Button, Card } from '../../shell/design-system'
+import { Button } from '../../shell/design-system'
 import type { CartItem } from './types'
 
 export interface CompletedCheckout {
@@ -28,67 +28,84 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
  * Struk sederhana (FR-SI-05, versi awal) -- datanya dari input kasir
  * sendiri (bukan nunggu response server), makanya bisa langsung
  * tampil <2 detik walau offline (acceptance criteria POS Checkout).
- * Styling struk termal/gambar detail nyusul Fase 10.
+ * Styling struk lengkap (logo toko dari store-settings, dll) nyusul
+ * Fase 10.
+ *
+ * Lebar `w-[58mm]` SENGAJA dipakai baik di layar maupun pas print --
+ * unit mm dikonversi browser secara konsisten di dua-duanya, jadi apa
+ * yang kelihatan di layar itu literally ukuran fisik yang bakal
+ * dicetak (WYSIWYG), bukan cuma preview kira-kira. Ukuran kertas
+ * beneran (58mm, tanpa margin) diatur lewat @page di index.css --
+ * itu satu-satunya cara ngatur ukuran halaman print, gak bisa lewat
+ * className.
  */
 export function ReceiptView({ checkout, onNewTransaction }: ReceiptViewProps) {
   const change = checkout.amountPaid !== null ? checkout.amountPaid - checkout.subtotal : null
 
   return (
-    <div className="mx-auto flex h-full max-w-md flex-col gap-4">
-      <Card>
-        <div className="mb-3 text-center">
-          <p className="text-sm font-semibold text-green-700">Transaksi Berhasil</p>
-          <p className="text-xs text-slate-400">
-            {new Date(checkout.createdAt).toLocaleString('id-ID')} -- {checkout.idempotencyKey.slice(0, 8)}
-          </p>
+    <div className="flex h-full flex-col items-center gap-4 overflow-y-auto py-2">
+      <div className="w-[58mm] bg-white p-2 font-mono text-[11px] leading-tight text-black print:p-1">
+        <div className="mb-2 text-center">
+          <p className="font-bold">Transaksi Berhasil</p>
+          <p>{new Date(checkout.createdAt).toLocaleString('id-ID')}</p>
+          <p>#{checkout.idempotencyKey.slice(0, 8)}</p>
         </div>
 
-        <ul className="divide-y divide-slate-100 border-y border-slate-100">
+        <div className="border-t border-dashed border-black" />
+
+        <ul className="my-1.5">
           {checkout.items.map((item) => (
-            <li key={item.product.id} className="flex items-center justify-between py-2 text-sm">
-              <span className="text-slate-700">
-                {item.product.name} <span className="text-slate-400">x{item.qty}</span>
-              </span>
-              <span className="font-medium text-slate-900">{formatRupiah(item.product.price * item.qty)}</span>
+            <li key={item.product.id} className="py-1">
+              <p>{item.product.name}</p>
+              <p className="flex justify-between">
+                <span>
+                  {item.qty} x {formatRupiah(item.product.price)}
+                </span>
+                <span>{formatRupiah(item.product.price * item.qty)}</span>
+              </p>
             </li>
           ))}
         </ul>
 
-        <div className="mt-3 space-y-1 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Jenis</span>
+        <div className="border-t border-dashed border-black" />
+
+        <div className="mt-1.5 space-y-0.5">
+          <p className="flex justify-between">
+            <span>Jenis</span>
             <span>{checkout.type === 'walk_in' ? 'Walk-in' : 'Pre-order'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Metode bayar</span>
+          </p>
+          <p className="flex justify-between">
+            <span>Bayar</span>
             <span>{PAYMENT_LABEL[checkout.paymentMethod]}</span>
-          </div>
-          <div className="flex justify-between font-semibold text-slate-900">
+          </p>
+          <p className="flex justify-between font-bold">
             <span>Total</span>
             <span>{formatRupiah(checkout.subtotal)}</span>
-          </div>
+          </p>
           {checkout.amountPaid !== null && (
             <>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Uang diterima</span>
+              <p className="flex justify-between">
+                <span>Diterima</span>
                 <span>{formatRupiah(checkout.amountPaid)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Kembalian</span>
+              </p>
+              <p className="flex justify-between">
+                <span>Kembali</span>
                 <span>{formatRupiah(change ?? 0)}</span>
-              </div>
+              </p>
             </>
           )}
         </div>
-      </Card>
 
-      <div className="flex gap-2 print:hidden">
-        <Button variant="secondary" className="flex-1" onClick={() => window.print()}>
+        <div className="mt-2 border-t border-dashed border-black pt-1.5 text-center">
+          <p>Terima kasih!</p>
+        </div>
+      </div>
+
+      <div className="flex w-[58mm] flex-col gap-2 print:hidden">
+        <Button variant="secondary" onClick={() => window.print()}>
           Cetak Struk
         </Button>
-        <Button className="flex-1" onClick={onNewTransaction}>
-          Transaksi Baru
-        </Button>
+        <Button onClick={onNewTransaction}>Transaksi Baru</Button>
       </div>
     </div>
   )

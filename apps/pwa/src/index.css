@@ -32,3 +32,14 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/* Struk (ReceiptView) dicetak buat printer termal 58mm (FR-SI-05).
+   @page cuma bisa didefinisikan global lewat CSS biasa -- Tailwind
+   gak punya utility buat ini. margin: 0 penting, printer termal gak
+   punya konsep "kertas A4 dengan margin", seluruh lebar kertas dipakai. */
+@media print {
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+}
