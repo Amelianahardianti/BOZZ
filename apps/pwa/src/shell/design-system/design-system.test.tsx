@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Button, Card, EmptyState, PageHeader } from './index'
+import { Button, Card, ConfirmActionModal, EmptyState, PageHeader } from './index'
 
 describe('Button', () => {
   it('merender children dan manggil onClick pas diklik', async () => {
@@ -57,5 +57,51 @@ describe('EmptyState', () => {
 
     expect(screen.getByText('Kosong')).toBeInTheDocument()
     expect(screen.getByText('Belum ada data')).toBeInTheDocument()
+  })
+})
+
+describe('ConfirmActionModal', () => {
+  function setup(onConfirm = vi.fn(), onCancel = vi.fn()) {
+    render(
+      <ConfirmActionModal
+        title="Hapus Data"
+        description="Yakin mau hapus?"
+        confirmWord="hapus"
+        confirmLabel="Hapus"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />,
+    )
+    return { onConfirm, onCancel }
+  }
+
+  it('tombol konfirmasi kedisable sampe kata yang bener diketik (case-insensitive)', async () => {
+    const user = userEvent.setup()
+    const { onConfirm } = setup()
+
+    expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled()
+
+    await user.type(screen.getByLabelText(/Ketik "hapus"/i), 'HAPUS')
+    expect(screen.getByRole('button', { name: 'Hapus' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Hapus' }))
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('kata salah -- tombol tetap disable, onConfirm gak kepanggil', async () => {
+    const user = userEvent.setup()
+    const { onConfirm } = setup()
+
+    await user.type(screen.getByLabelText(/Ketik "hapus"/i), 'hapuss')
+    expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled()
+    expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  it('klik Batal manggil onCancel', async () => {
+    const user = userEvent.setup()
+    const { onCancel } = setup()
+
+    await user.click(screen.getByRole('button', { name: 'Batal' }))
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

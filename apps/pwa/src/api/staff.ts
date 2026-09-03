@@ -61,7 +61,17 @@ export async function updateStaff(id: string, changes: UpdateStaffInput): Promis
   return apiRequest<Staff>(`/staff/${id}`, { method: 'PATCH', body: changes, token: requireToken() })
 }
 
-/** PATCH /api/staff/:id/deactivate -- Owner. Gak ada endpoint hapus, cuma nonaktifin. */
+/**
+ * PATCH /api/staff/:id/deactivate -- Owner. Gak ada endpoint hapus,
+ * cuma nonaktifin. Backend nolak (400) kalau targetnya akun Owner --
+ * termasuk nonaktifin diri sendiri, biar toko gak kehilangan
+ * satu-satunya akun yang bisa ngurus staf.
+ */
 export async function deactivateStaff(id: string): Promise<Staff> {
   return apiRequest<Staff>(`/staff/${id}/deactivate`, { method: 'PATCH', token: requireToken() })
+}
+
+/** PATCH /api/staff/:id/activate -- Owner. Buat mulihin akun yang sebelumnya dinonaktifkan. */
+export async function activateStaff(id: string): Promise<Staff> {
+  return apiRequest<Staff>(`/staff/${id}/activate`, { method: 'PATCH', token: requireToken() })
 }

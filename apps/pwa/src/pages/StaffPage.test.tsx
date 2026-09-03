@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as staffApi from '../api/staff'
@@ -11,12 +11,14 @@ vi.mock('../api/staff', () => ({
   createStaff: vi.fn(),
   updateStaff: vi.fn(),
   deactivateStaff: vi.fn(),
+  activateStaff: vi.fn(),
 }))
 
 const mockedFetchStaff = vi.mocked(staffApi.fetchStaff)
 const mockedCreateStaff = vi.mocked(staffApi.createStaff)
 const mockedUpdateStaff = vi.mocked(staffApi.updateStaff)
 const mockedDeactivateStaff = vi.mocked(staffApi.deactivateStaff)
+const mockedActivateStaff = vi.mocked(staffApi.activateStaff)
 
 function buildStaff(overrides: Partial<Staff> = {}): Staff {
   return {
@@ -129,27 +131,46 @@ describe('StaffPage', () => {
     )
   })
 
-  it('nonaktifkan staf -- minta konfirmasi dulu, baru manggil deactivateStaff', async () => {
+  it('nonaktifkan staf -- minta ketik ulang "nonaktifkan" dulu, baru manggil deactivateStaff', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockedDeactivateStaff.mockResolvedValue(buildStaff({ is_active: false }))
     render(<StaffPage />)
     await screen.findByText('Budi Kasir')
 
     await user.click(screen.getByRole('button', { name: 'Nonaktifkan' }))
+    const dialog = screen.getByRole('dialog')
+    // Tombol konfirmasi harusnya kedisable sampe kata yang bener diketik.
+    expect(within(dialog).getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled()
+    expect(mockedDeactivateStaff).not.toHaveBeenCalled()
 
-    expect(window.confirm).toHaveBeenCalled()
+    await user.type(within(dialog).getByLabelText(/Ketik "nonaktifkan"/i), 'nonaktifkan')
+    await user.click(within(dialog).getByRole('button', { name: 'Nonaktifkan' }))
+
     await waitFor(() => expect(mockedDeactivateStaff).toHaveBeenCalledWith('staff-1'))
   })
 
-  it('batal konfirmasi nonaktifkan -- deactivateStaff GAK dipanggil', async () => {
+  it('salah ketik kata konfirmasi -- deactivateStaff GAK dipanggil', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<StaffPage />)
     await screen.findByText('Budi Kasir')
 
     await user.click(screen.getByRole('button', { name: 'Nonaktifkan' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/Ketik "nonaktifkan"/i), 'nonaktif')
 
+    expect(within(dialog).getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled()
+    expect(mockedDeactivateStaff).not.toHaveBeenCalled()
+  })
+
+  it('batal konfirmasi nonaktifkan -- deactivateStaff GAK dipanggil, modal ketutup', async () => {
+    const user = userEvent.setup()
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+
+    await user.click(screen.getByRole('button', { name: 'Nonaktifkan' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Batal' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(mockedDeactivateStaff).not.toHaveBeenCalled()
   })
 
@@ -163,5 +184,51 @@ describe('StaffPage', () => {
 
     expect(await screen.findByText('Budi Kasir')).toBeInTheDocument()
     expect(mockedCreateStaff).not.toHaveBeenCalled()
+  })
+
+  it('akun Owner gak ada tombol Nonaktifkan sama sekali -- ada label "Akun Owner" sebagai gantinya', async () => {
+    mockedFetchStaff.mockResolvedValue([buildStaff({ id: 'owner-1', name: 'Owner Toko', role: 'owner' })])
+    render(<StaffPage />)
+
+    await screen.findByText('Owner Toko')
+
+    expect(screen.getByText('Akun Owner')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument()
+    // Edit tetap ada -- cuma nonaktifin yang diblok.
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+  })
+
+  it('staf yang nonaktif nampilin tombol Aktifkan (bukan Nonaktifkan), ketik ulang lalu konfirmasi manggil activateStaff', async () => {
+    const user = userEvent.setup()
+    mockedFetchStaff.mockResolvedValue([buildStaff({ is_active: false })])
+    mockedActivateStaff.mockResolvedValue(buildStaff({ is_active: true }))
+    render(<StaffPage />)
+
+    await screen.findByText('Budi Kasir')
+    expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Aktifkan' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/Ketik "aktifkan"/i), 'aktifkan')
+    await user.click(within(dialog).getByRole('button', { name: 'Aktifkan' }))
+
+    await waitFor(() => expect(mockedActivateStaff).toHaveBeenCalledWith('staff-1'))
+    expect(mockedFetchStaff).toHaveBeenCalledTimes(2) // initial load + refresh abis aktifin
+  })
+
+  it('gagal aktifkan -- nampilin alert dari backend', async () => {
+    const user = userEvent.setup()
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined)
+    mockedFetchStaff.mockResolvedValue([buildStaff({ is_active: false })])
+    mockedActivateStaff.mockRejectedValue(new ApiRequestError(404, 'NOT_FOUND', 'Staf tidak ditemukan.'))
+    render(<StaffPage />)
+
+    await screen.findByText('Budi Kasir')
+    await user.click(screen.getByRole('button', { name: 'Aktifkan' }))
+    const dialog = screen.getByRole('dialog')
+    await user.type(within(dialog).getByLabelText(/Ketik "aktifkan"/i), 'aktifkan')
+    await user.click(within(dialog).getByRole('button', { name: 'Aktifkan' }))
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Staf tidak ditemukan.'))
   })
 })

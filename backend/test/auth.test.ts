@@ -305,7 +305,8 @@ describe('PATCH /api/staff/:id -- Owner', () => {
 
 describe('PATCH /api/staff/:id/deactivate -- Owner', () => {
   it('200 buat Owner, is_active jadi false', async () => {
-    mockedRepo.deactivateUser.mockResolvedValue(buildUser({ is_active: false }));
+    mockedRepo.findById.mockResolvedValue(buildUser({ role: 'kasir' }));
+    mockedRepo.deactivateUser.mockResolvedValue(buildUser({ role: 'kasir', is_active: false }));
 
     const res = await request(app)
       .patch('/api/staff/some-id/deactivate')
@@ -330,13 +331,67 @@ describe('PATCH /api/staff/:id/deactivate -- Owner', () => {
   });
 
   it('404 kalau staf gak ketemu', async () => {
-    mockedRepo.deactivateUser.mockResolvedValue(null);
+    mockedRepo.findById.mockResolvedValue(null);
 
     const res = await request(app)
       .patch('/api/staff/gak-ada/deactivate')
       .set('Authorization', `Bearer ${ownerToken()}`);
 
     expect(res.status).toBe(404);
+  });
+
+  it('400 kalau targetnya akun Owner -- gak boleh dinonaktifkan lewat sini (termasuk nonaktifin diri sendiri)', async () => {
+    mockedRepo.findById.mockResolvedValue(buildUser({ id: 'owner-id', role: 'owner' }));
+
+    const res = await request(app)
+      .patch('/api/staff/owner-id/deactivate')
+      .set('Authorization', `Bearer ${ownerToken()}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockedRepo.deactivateUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/staff/:id/activate -- Owner', () => {
+  it('200 buat Owner, is_active jadi true lagi', async () => {
+    mockedRepo.activateUser.mockResolvedValue(buildUser({ role: 'kasir', is_active: true }));
+
+    const res = await request(app)
+      .patch('/api/staff/some-id/activate')
+      .set('Authorization', `Bearer ${ownerToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.is_active).toBe(true);
+  });
+
+  it('403 buat Kasir', async () => {
+    const res = await request(app)
+      .patch('/api/staff/some-id/activate')
+      .set('Authorization', `Bearer ${kasirToken()}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('403 buat Pengepak', async () => {
+    const res = await request(app)
+      .patch('/api/staff/some-id/activate')
+      .set('Authorization', `Bearer ${staffToken('pengepak')}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('404 kalau staf gak ketemu', async () => {
+    mockedRepo.activateUser.mockResolvedValue(null);
+
+    const res = await request(app)
+      .patch('/api/staff/gak-ada/activate')
+      .set('Authorization', `Bearer ${ownerToken()}`);
+
+    expect(res.status).toBe(404);
+  });
+
+  it('401 tanpa token', async () => {
+    const res = await request(app).patch('/api/staff/some-id/activate');
+    expect(res.status).toBe(401);
   });
 });
 

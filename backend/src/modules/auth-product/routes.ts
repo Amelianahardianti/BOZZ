@@ -110,6 +110,21 @@ router.patch(
   })
 );
 
+// ---------- PATCH /api/staff/:id/activate ----------
+// Belum ada di contracts/api.yaml (cuma /deactivate yang tercatat) --
+// ditambahin karena tanpa ini staf yang kepencet nonaktif gak akan
+// pernah bisa dipulihkan lagi lewat API manapun. Perlu ditambahkan ke
+// kontrak waktu review tim.
+router.patch(
+  '/staff/:id/activate',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const updated = await service.activateStaff(req.params.id);
+    res.status(200).json(updated);
+  })
+);
+
 // ---------- GET /api/store-settings ----------
 router.get(
   '/store-settings',

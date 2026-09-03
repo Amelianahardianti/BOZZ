@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { STORAGE_KEY, type AuthSession } from '../shell/auth/auth-context'
-import { createStaff, deactivateStaff, fetchStaff, updateStaff } from './staff'
+import { activateStaff, createStaff, deactivateStaff, fetchStaff, updateStaff } from './staff'
 
 const originalFetch = globalThis.fetch
 
@@ -77,6 +77,18 @@ describe('deactivateStaff', () => {
 
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toContain('/staff/1/deactivate')
+    expect(init.method).toBe('PATCH')
+  })
+})
+
+describe('activateStaff', () => {
+  it('PATCH /staff/:id/activate', async () => {
+    const fetchMock = mockFetchOnce(200, { id: '1', is_active: true })
+
+    await activateStaff('1')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/staff/1/activate')
     expect(init.method).toBe('PATCH')
   })
 })

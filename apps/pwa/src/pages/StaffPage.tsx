@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  activateStaff,
   createStaff,
   deactivateStaff,
   fetchStaff,
@@ -7,7 +8,7 @@ import {
   type Staff,
 } from '../api/staff'
 import { ApiRequestError } from '../api/client'
-import { Button, Card, EmptyState, PageHeader, TextInput } from '../shell/design-system'
+import { Button, Card, ConfirmActionModal, EmptyState, PageHeader, TextInput } from '../shell/design-system'
 
 type Role = 'kasir' | 'pengepak'
 
@@ -31,6 +32,9 @@ export function StaffPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [pendingAction, setPendingAction] = useState<{ person: Staff; type: 'activate' | 'deactivate' } | null>(null)
+  const [isConfirmSubmitting, setIsConfirmSubmitting] = useState(false)
 
   async function loadStaff() {
     setIsLoading(true)
@@ -106,13 +110,28 @@ export function StaffPage() {
     }
   }
 
-  async function handleDeactivate(person: Staff) {
-    if (!window.confirm(`Nonaktifkan akun "${person.name}"? Akun ini gak akan bisa login lagi.`)) return
+  async function handleConfirmAction() {
+    if (!pendingAction) return
+    const { person, type } = pendingAction
+    setIsConfirmSubmitting(true)
     try {
-      await deactivateStaff(person.id)
+      if (type === 'deactivate') {
+        await deactivateStaff(person.id)
+      } else {
+        await activateStaff(person.id)
+      }
+      setPendingAction(null)
       await loadStaff()
     } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal menonaktifkan staf.')
+      window.alert(
+        err instanceof ApiRequestError
+          ? err.message
+          : type === 'deactivate'
+            ? 'Gagal menonaktifkan staf.'
+            : 'Gagal mengaktifkan staf.',
+      )
+    } finally {
+      setIsConfirmSubmitting(false)
     }
   }
 
@@ -230,7 +249,7 @@ export function StaffPage() {
                     </span>
                   </td>
                   <td className="py-2">
-                    <div className="flex gap-3">
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
                         className="text-brand-600 hover:underline"
@@ -238,13 +257,28 @@ export function StaffPage() {
                       >
                         Edit
                       </button>
-                      {person.is_active && (
+                      {person.role === 'owner' ? (
+                        // Owner cuma dibuat sekali di awal (seed) & gak
+                        // bisa dinonaktifkan lewat sini (backend nolak
+                        // 400) -- termasuk nonaktifin akun sendiri, biar
+                        // toko gak kehilangan satu-satunya akun yang
+                        // bisa ngurus staf.
+                        <span className="text-xs text-slate-400">Akun Owner</span>
+                      ) : person.is_active ? (
                         <button
                           type="button"
                           className="text-red-600 hover:underline"
-                          onClick={() => handleDeactivate(person)}
+                          onClick={() => setPendingAction({ person, type: 'deactivate' })}
                         >
                           Nonaktifkan
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-green-600 hover:underline"
+                          onClick={() => setPendingAction({ person, type: 'activate' })}
+                        >
+                          Aktifkan
                         </button>
                       )}
                     </div>
@@ -254,6 +288,23 @@ export function StaffPage() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {pendingAction && (
+        <ConfirmActionModal
+          title={pendingAction.type === 'deactivate' ? 'Nonaktifkan Staf' : 'Aktifkan Staf'}
+          description={
+            pendingAction.type === 'deactivate'
+              ? `Akun "${pendingAction.person.name}" gak akan bisa login lagi sampai diaktifkan lagi.`
+              : `Akun "${pendingAction.person.name}" akan bisa login lagi seperti biasa.`
+          }
+          confirmWord={pendingAction.type === 'deactivate' ? 'nonaktifkan' : 'aktifkan'}
+          confirmLabel={pendingAction.type === 'deactivate' ? 'Nonaktifkan' : 'Aktifkan'}
+          variant={pendingAction.type === 'deactivate' ? 'danger' : 'primary'}
+          isSubmitting={isConfirmSubmitting}
+          onConfirm={handleConfirmAction}
+          onCancel={() => setPendingAction(null)}
+        />
       )}
     </>
   )

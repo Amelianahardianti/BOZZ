@@ -11,6 +11,9 @@ module.exports = {
   // DB beneran (mis. login) gagal bukan karena salah, tapi karena env
   // kosong.
   setupFiles: ['dotenv/config'],
+  // Nutup pool pg + PrismaClient abis tiap file test selesai (lihat
+  // komentar di file itu sendiri) -- tanpa ini worker Jest nyangkut.
+  setupFilesAfterEnv: ['<rootDir>/test/jest.teardown-db.ts'],
   transform: {
     // tsconfig utama pakai module NodeNext (buat runtime Node), tapi Jest
     // jalan di CommonJS. Di-override khusus test biar ts-jest tidak
