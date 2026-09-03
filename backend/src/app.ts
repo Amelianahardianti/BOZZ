@@ -28,6 +28,10 @@ app.use(cors({ origin: corsOrigins }));
 // asli yang ditandatangani platform.
 app.use(
   express.json({
+    // Default express.json() cuma 100kb -- kepentok kalau body-nya logo
+    // toko base64 (lihat cap 700_000 char di auth-product/routes.ts,
+    // ~525KB kalau di-decode). 1mb dikasih longgar dikit di atas itu.
+    limit: '1mb',
     verify: (req, _res, buf) => {
       (req as Request & { rawBody?: Buffer }).rawBody = buf;
     },

@@ -126,10 +126,13 @@ router.patch(
 );
 
 // ---------- GET /api/store-settings ----------
+// Semua role boleh baca (bukan cuma Owner) -- Kasir & Pengepak butuh
+// nama toko/alamat/telepon/logo buat dicetak di struk (FR-SI-05). Cuma
+// PATCH (ubah data) yang tetap dikunci Owner doang.
 router.get(
   '/store-settings',
   requireAuth,
-  requireRole('owner'),
+  requireRole('owner', 'kasir', 'pengepak'),
   asyncHandler(async (_req, res) => {
     const settings = await service.getStoreSettings();
     res.status(200).json(settings);
@@ -142,7 +145,11 @@ const updateStoreSettingsSchema = z.object({
   address: z.string().optional(),
   phone: z.string().optional(),
   receipt_footer_note: z.string().optional(),
-  logo_url: z.string().optional(),
+  // Logo dikirim FE sebagai base64 data URI (sudah di-compress di
+  // browser) -- 700_000 char base64 ~ 525KB gambar asli, jauh di atas
+  // hasil compress normal (target FE ~500px, biasanya cuma puluhan KB).
+  // Batas ini jaring pengaman server, bukan target normalnya.
+  logo_url: z.string().max(700_000).optional(),
 });
 
 router.patch(

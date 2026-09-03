@@ -24,12 +24,12 @@ export interface UpdateStoreSettingsInput {
 function requireToken(): string {
   const session = readStoredSession()
   if (!session) {
-    throw new Error('Dipanggil tanpa sesi login -- halaman Pengaturan Toko wajib login sebagai Owner.')
+    throw new Error('Dipanggil tanpa sesi login.')
   }
   return session.token
 }
 
-/** GET /api/store-settings -- Owner. */
+/** GET /api/store-settings -- semua role login boleh baca (dibutuhin buat header struk, FR-SI-05). */
 export async function fetchStoreSettings(): Promise<StoreSettings> {
   return apiRequest<StoreSettings>('/store-settings', { token: requireToken() })
 }

@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiRequestError } from '../api/client'
 import * as storeSettingsApi from '../api/storeSettings'
 import type { StoreSettings } from '../api/storeSettings'
+import * as imageUtils from '../shared/image'
 import { StoreSettingsPage } from './StoreSettingsPage'
 
 vi.mock('../api/storeSettings', () => ({
@@ -11,8 +12,17 @@ vi.mock('../api/storeSettings', () => ({
   updateStoreSettings: vi.fn(),
 }))
 
+// validateLogoFile dibiarkan implementasi ASLI (murni, gak nyentuh
+// browser API) -- cuma compressImageToDataUrl yang di-mock, karena itu
+// butuh Image/canvas beneran yang jsdom gak bisa render.
+vi.mock('../shared/image', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../shared/image')>()
+  return { ...actual, compressImageToDataUrl: vi.fn() }
+})
+
 const mockedFetch = vi.mocked(storeSettingsApi.fetchStoreSettings)
 const mockedUpdate = vi.mocked(storeSettingsApi.updateStoreSettings)
+const mockedCompress = vi.mocked(imageUtils.compressImageToDataUrl)
 
 function buildSettings(overrides: Partial<StoreSettings> = {}): StoreSettings {
   return {
@@ -85,5 +95,77 @@ describe('StoreSettingsPage', () => {
 
     expect(await screen.findByText('Nama bisnis wajib diisi.')).toBeInTheDocument()
     expect(screen.queryByText('Tersimpan.')).not.toBeInTheDocument()
+  })
+
+  it('pilih file JPG valid -- preview muncul, disimpan sebagai data URL hasil compress', async () => {
+    const user = userEvent.setup()
+    mockedCompress.mockResolvedValue('data:image/jpeg;base64,hasilcompress')
+    mockedUpdate.mockResolvedValue(buildSettings())
+    render(<StoreSettingsPage />)
+    await screen.findByLabelText('Nama Bisnis')
+
+    const file = new File(['isi-gambar'], 'logo.jpg', { type: 'image/jpeg' })
+    await user.upload(screen.getByLabelText('Logo Toko'), file)
+
+    expect(mockedCompress).toHaveBeenCalledWith(file)
+    const preview = await screen.findByAltText('Logo toko')
+    expect(preview).toHaveAttribute('src', 'data:image/jpeg;base64,hasilcompress')
+
+    await user.click(screen.getByRole('button', { name: 'Simpan' }))
+    expect(mockedUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ logo_url: 'data:image/jpeg;base64,hasilcompress' }),
+    )
+  })
+
+  it('file bukan JPG/PNG -- nampilin error, gak manggil compress', async () => {
+    render(<StoreSettingsPage />)
+    await screen.findByLabelText('Nama Bisnis')
+
+    // fireEvent.change (bukan userEvent.upload) SENGAJA dipakai -- atribut
+    // `accept` cuma hint UI, gak dipaksa browser (drag-drop misalnya bisa
+    // lewatin), jadi validasi manual di komponen ini yang beneran diuji.
+    const file = new File(['isi-pdf'], 'dokumen.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Logo Toko'), { target: { files: [file] } })
+
+    expect(await screen.findByText('Format logo harus JPG atau PNG.')).toBeInTheDocument()
+    expect(mockedCompress).not.toHaveBeenCalled()
+  })
+
+  it('file lebih dari 5MB -- ditolak sebelum di-compress', async () => {
+    const user = userEvent.setup()
+    render(<StoreSettingsPage />)
+    await screen.findByLabelText('Nama Bisnis')
+
+    const bigFile = new File([new Uint8Array(6 * 1024 * 1024)], 'besar.jpg', { type: 'image/jpeg' })
+    await user.upload(screen.getByLabelText('Logo Toko'), bigFile)
+
+    expect(await screen.findByText('Ukuran file maksimal 5MB.')).toBeInTheDocument()
+    expect(mockedCompress).not.toHaveBeenCalled()
+  })
+
+  it('compress gagal (mis. file korup) -- nampilin pesan errornya', async () => {
+    const user = userEvent.setup()
+    mockedCompress.mockRejectedValue(new Error('File bukan gambar yang valid.'))
+    render(<StoreSettingsPage />)
+    await screen.findByLabelText('Nama Bisnis')
+
+    const file = new File(['isi-gambar'], 'logo.jpg', { type: 'image/jpeg' })
+    await user.upload(screen.getByLabelText('Logo Toko'), file)
+
+    expect(await screen.findByText('File bukan gambar yang valid.')).toBeInTheDocument()
+  })
+
+  it('klik "Hapus Logo" -- preview ilang, logo_url dikosongin pas simpan', async () => {
+    const user = userEvent.setup()
+    mockedFetch.mockResolvedValue(buildSettings({ logo_url: 'data:image/jpeg;base64,logolama' }))
+    mockedUpdate.mockResolvedValue(buildSettings())
+    render(<StoreSettingsPage />)
+
+    expect(await screen.findByAltText('Logo toko')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Hapus Logo' }))
+    expect(screen.queryByAltText('Logo toko')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Simpan' }))
+    expect(mockedUpdate).toHaveBeenCalledWith(expect.objectContaining({ logo_url: '' }))
   })
 })
