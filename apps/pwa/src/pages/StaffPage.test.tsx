@@ -46,7 +46,7 @@ describe('StaffPage', () => {
 
     expect(await screen.findByText('Budi Kasir')).toBeInTheDocument()
     expect(screen.getByText('budi')).toBeInTheDocument()
-    expect(screen.getByText('Aktif')).toBeInTheDocument()
+    expect(screen.getByText('Aktif', { selector: 'span' })).toBeInTheDocument()
   })
 
   it('daftar kosong -- nampilin empty state, bukan tabel kosong', async () => {
@@ -230,5 +230,76 @@ describe('StaffPage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Aktifkan' }))
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Staf tidak ditemukan.'))
+  })
+
+  it('search bar -- filter berdasarkan nama atau username', async () => {
+    const user = userEvent.setup()
+    mockedFetchStaff.mockResolvedValue([
+      buildStaff({ id: 'staff-1', name: 'Budi Kasir', email_or_username: 'budi' }),
+      buildStaff({ id: 'staff-2', name: 'Sari Pengepak', email_or_username: 'sari', role: 'pengepak' }),
+    ])
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+    expect(screen.getByText('Sari Pengepak')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Cari'), 'sari')
+
+    expect(screen.queryByText('Budi Kasir')).not.toBeInTheDocument()
+    expect(screen.getByText('Sari Pengepak')).toBeInTheDocument()
+  })
+
+  it('search bar -- juga cocok lewat username, bukan cuma nama', async () => {
+    const user = userEvent.setup()
+    mockedFetchStaff.mockResolvedValue([
+      buildStaff({ id: 'staff-1', name: 'Budi Kasir', email_or_username: 'budi' }),
+      buildStaff({ id: 'staff-2', name: 'Sari Pengepak', email_or_username: 'sari', role: 'pengepak' }),
+    ])
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+
+    await user.type(screen.getByLabelText('Cari'), 'budi')
+
+    expect(screen.getByText('Budi Kasir')).toBeInTheDocument()
+    expect(screen.queryByText('Sari Pengepak')).not.toBeInTheDocument()
+  })
+
+  it('filter role -- cuma nampilin staf sesuai role yang dipilih', async () => {
+    const user = userEvent.setup()
+    mockedFetchStaff.mockResolvedValue([
+      buildStaff({ id: 'staff-1', name: 'Budi Kasir', role: 'kasir' }),
+      buildStaff({ id: 'staff-2', name: 'Sari Pengepak', role: 'pengepak' }),
+    ])
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+
+    await user.selectOptions(screen.getByLabelText('Role'), 'pengepak')
+
+    expect(screen.queryByText('Budi Kasir')).not.toBeInTheDocument()
+    expect(screen.getByText('Sari Pengepak')).toBeInTheDocument()
+  })
+
+  it('filter status -- cuma nampilin staf yang nonaktif', async () => {
+    const user = userEvent.setup()
+    mockedFetchStaff.mockResolvedValue([
+      buildStaff({ id: 'staff-1', name: 'Budi Kasir', is_active: true }),
+      buildStaff({ id: 'staff-2', name: 'Sari Nonaktif', is_active: false }),
+    ])
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+
+    await user.selectOptions(screen.getByLabelText('Status'), 'inactive')
+
+    expect(screen.queryByText('Budi Kasir')).not.toBeInTheDocument()
+    expect(screen.getByText('Sari Nonaktif')).toBeInTheDocument()
+  })
+
+  it('search/filter gak nemu hasil -- nampilin empty state, bukan tabel kosong', async () => {
+    const user = userEvent.setup()
+    render(<StaffPage />)
+    await screen.findByText('Budi Kasir')
+
+    await user.type(screen.getByLabelText('Cari'), 'gak-ada-yang-cocok')
+
+    expect(await screen.findByText('Gak ada staf yang cocok')).toBeInTheDocument()
   })
 })
