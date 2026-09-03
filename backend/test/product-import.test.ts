@@ -18,6 +18,36 @@ async function buildWorkbook(rows: unknown[][]): Promise<Buffer> {
   return Buffer.from(data);
 }
 
+/**
+ * Pantau 1 job sampai kelar. Dipisah dari importAndWait supaya test
+ * "membalas 202 ... tidak menunggu prosesnya selesai" TETAP bisa
+ * assert 202-nya instan (gak nunggu apa-apa dulu), tapi habis itu
+ * tetap ngedrain job-nya sendiri di background -- biar gak ninggalin
+ * kerjaan async nyangkut yang numpuk ke test berikutnya (job import
+ * sebelumnya yang belum kelar bisa bikin polling test lain keliru
+ * baca job MILIK SENDIRI vs job numpukan test sebelumnya).
+ *
+ * 404 di sini SENGAJA diperlakukan sama kayak "belum selesai" (bukan
+ * gagal langsung) -- job-nya dijamin ADA (job_id dari response 202),
+ * tapi prosesnya jalan di background (setImmediate), jadi ada jeda
+ * wajar sebelum status-nya kebaca konsisten. Yang beneran ditest tetap
+ * sama: job HARUS balik 200 + status final dalam batas waktu (50x20ms),
+ * atau gagal apa adanya lewat throw di akhir -- bukan ditutup-tutupin.
+ */
+async function waitForJobToFinish(token: string, jobId: string) {
+  for (let i = 0; i < 50; i += 1) {
+    const status = await request(app)
+      .get(`/api/products/import/${jobId}`)
+      .set('Authorization', `Bearer ${token}`);
+    if (status.status === 200 && (status.body.status === 'done' || status.body.status === 'failed')) {
+      return status.body;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error('Job import tidak selesai-selesai.');
+}
+
 /** Kirim file, tunggu job-nya kelar, kembalikan laporan akhirnya. */
 async function importAndWait(token: string, buffer: Buffer, filename = 'produk.xlsx') {
   const upload = await request(app)
@@ -29,17 +59,7 @@ async function importAndWait(token: string, buffer: Buffer, filename = 'produk.x
   expect(upload.body.job_id).toBeTruthy();
   expect(upload.body.status).toBe('queued');
 
-  // Job jalan di belakang, jadi statusnya dipantau sampai selesai.
-  for (let i = 0; i < 50; i += 1) {
-    const status = await request(app)
-      .get(`/api/products/import/${upload.body.job_id}`)
-      .set('Authorization', `Bearer ${token}`);
-    expect(status.status).toBe(200);
-    if (status.body.status === 'done' || status.body.status === 'failed') return status.body;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-
-  throw new Error('Job import tidak selesai-selesai.');
+  return waitForJobToFinish(token, upload.body.job_id);
 }
 
 const HEADER = ['Nama Produk', 'SKU', 'Kategori', 'Harga', 'Stok', 'Stok Minim', 'Satuan'];
@@ -57,6 +77,11 @@ describe('POST /api/products/import', () => {
     expect(res.status).toBe(202);
     expect(Object.keys(res.body).sort()).toEqual(['job_id', 'status']);
     expect(res.body.status).toBe('queued');
+
+    // Yang mau ditest di atas ("202 instan") udah kejawab. Drain job-nya
+    // di sini SETELAH assert-nya, biar test berikutnya gak mulai
+    // sementara job punya test ini masih jalan di background.
+    await waitForJobToFinish(token, res.body.job_id);
   });
 
   it('membuat produk baru dari isi file', async () => {
