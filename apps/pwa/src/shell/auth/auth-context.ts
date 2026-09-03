@@ -45,3 +45,22 @@ export function readStoredSession(): AuthSession | null {
     return null
   }
 }
+
+const UNAUTHORIZED_EVENT = 'pos-pwa:unauthorized'
+
+/**
+ * Dipanggil api/client.ts pas backend BENERAN nolak token (401) --
+ * sinyal paling otoritatif kalau sesi udah gak valid, lebih bisa
+ * dipercaya daripada sekadar ngitung waktu di client (jam device bisa
+ * meleset). AuthProvider dengerin ini lewat onUnauthorized() di bawah
+ * buat logout otomatis + balik ke /login (lewat RequireAuth).
+ */
+export function notifyUnauthorized(): void {
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+}
+
+/** @returns fungsi unsubscribe. */
+export function onUnauthorized(handler: () => void): () => void {
+  window.addEventListener(UNAUTHORIZED_EVENT, handler)
+  return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler)
+}
