@@ -26,3 +26,41 @@ export interface AuthContextValue {
 export const STORAGE_KEY = 'pos-pwa:auth-session'
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+/**
+ * Baca sesi login langsung dari localStorage, TANPA lewat React
+ * context. Dipakai AuthProvider (buat state awal), dan dipakai modul
+ * offline-sync (shell/offline) buat tau token pas mau sync di
+ * background -- itu jalan di luar pohon komponen React, jadi gak bisa
+ * pakai useAuth().
+ */
+export function readStoredSession(): AuthSession | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as AuthSession
+  } catch {
+    // localStorage gak bisa diakses (mis. private mode) atau isinya
+    // rusak -- anggap aja belum login, bukan bikin app crash.
+    return null
+  }
+}
+
+const UNAUTHORIZED_EVENT = 'pos-pwa:unauthorized'
+
+/**
+ * Dipanggil api/client.ts pas backend BENERAN nolak token (401) --
+ * sinyal paling otoritatif kalau sesi udah gak valid, lebih bisa
+ * dipercaya daripada sekadar ngitung waktu di client (jam device bisa
+ * meleset). AuthProvider dengerin ini lewat onUnauthorized() di bawah
+ * buat logout otomatis + balik ke /login (lewat RequireAuth).
+ */
+export function notifyUnauthorized(): void {
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+}
+
+/** @returns fungsi unsubscribe. */
+export function onUnauthorized(handler: () => void): () => void {
+  window.addEventListener(UNAUTHORIZED_EVENT, handler)
+  return () => window.removeEventListener(UNAUTHORIZED_EVENT, handler)
+}

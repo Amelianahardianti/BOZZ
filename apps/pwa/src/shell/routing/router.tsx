@@ -15,6 +15,7 @@ import { ReportsPage } from '../../pages/ReportsPage'
 import { StaffPage } from '../../pages/StaffPage'
 import { StoreSettingsPage } from '../../pages/StoreSettingsPage'
 import { TicketsPage } from '../../pages/TicketsPage'
+import { OfflineSyncTestPage } from '../../pages/dev/OfflineSyncTestPage'
 import { IndexRedirect } from './IndexRedirect'
 import { NAV_ITEMS, ROUTES, type AppRole } from './routes'
 
@@ -41,6 +42,9 @@ function guarded(path: string, element: ReactNode) {
 // RequireRole di tiap child route mastiin rolenya emang boleh ke situ.
 export const routeConfig: RouteObject[] = [
   { path: ROUTES.login, element: <LoginPage /> },
+  // Dev-only, gak ikut ke production build (lihat OfflineSyncTestPage.tsx
+  // buat cara pakai) -- HAPUS setelah Kasir Page (Fase 5) jadi.
+  ...(import.meta.env.DEV ? [{ path: '/dev/offline-sync-test', element: <OfflineSyncTestPage /> }] : []),
   {
     path: '/',
     element: (

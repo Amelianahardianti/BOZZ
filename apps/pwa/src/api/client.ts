@@ -3,6 +3,8 @@
 // fetch() langsung dari komponen -- biar format error & auth header
 // konsisten di satu tempat.
 
+import { notifyUnauthorized } from '../shell/auth/auth-context'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 /** Bentuk error backend, sesuai SRS 9.7: { error: { code, message } }. */
@@ -27,10 +29,12 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
   token?: string
+  /** Header tambahan di luar Content-Type/Authorization, mis. Idempotency-Key (SRS 9.3). */
+  headers?: Record<string, string>
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...options.headers }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
   if (options.token) headers.Authorization = `Bearer ${options.token}`
 
@@ -54,6 +58,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const data = (await res.json().catch(() => null)) as (ApiErrorBody & T) | null
 
   if (!res.ok) {
+    // 401 di request yang MEMANG kekirim token berarti tokennya
+    // ditolak beneran (kedaluwarsa/dicabut) -- beda sama 401 login
+    // gagal (salah password), yang gak pernah kirim token sama
+    // sekali. Cuma yang pertama yang berarti "sesi lagi aktif kok
+    // tiba-tiba ditolak", jadi cuma itu yang micu auto-logout.
+    if (res.status === 401 && options.token) {
+      notifyUnauthorized()
+    }
+
     throw new ApiRequestError(
       res.status,
       data?.error?.code ?? 'UNKNOWN_ERROR',
