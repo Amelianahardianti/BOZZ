@@ -162,3 +162,55 @@ router.get(
     res.status(200).json(await service.searchCustomers(q));
   })
 );
+
+// ---------- Customer CRM v2 (FR-OC-10) ----------
+// Bentuk body PERSIS mengikuti CustomerCreateRequest di contracts/api.yaml:
+// semua field opsional (kontraknya sendiri tidak menandai satu pun field
+// sebagai required), dipakai sama untuk create (POST) maupun update (PATCH).
+const customerWriteSchema = z.object({
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+});
+
+// ---------- GET /api/customers ----------
+router.get(
+  '/customers',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (_req, res) => {
+    res.status(200).json(await service.listCustomers());
+  })
+);
+
+// ---------- POST /api/customers ----------
+router.post(
+  '/customers',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const body = customerWriteSchema.parse(req.body ?? {});
+    res.status(201).json(await service.createCustomer(body));
+  })
+);
+
+// ---------- GET /api/customers/:id ----------
+router.get(
+  '/customers/:id',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(await service.getCustomerDetail(req.params.id));
+  })
+);
+
+// ---------- PATCH /api/customers/:id ----------
+router.patch(
+  '/customers/:id',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const body = customerWriteSchema.parse(req.body ?? {});
+    res.status(200).json(await service.updateCustomerDetail(req.params.id, body));
+  })
+);
