@@ -100,6 +100,42 @@ export async function searchCustomers(query: string) {
   });
 }
 
+// CRM v2 (FR-OC-10) -- cuma field yang ada di schema Customer di
+// contracts/api.yaml. `external_username`/`updated_at` sengaja tidak
+// dipilih, itu detail internal marketplace-matching (Step 4), bukan
+// bagian kontrak CRM.
+const CUSTOMER_CRM_SELECT = {
+  id: true,
+  name: true,
+  phone: true,
+  email: true,
+  source: true,
+  external_customer_ref: true,
+  created_at: true,
+} as const;
+
+export async function listCustomers() {
+  return prisma.customers.findMany({ select: CUSTOMER_CRM_SELECT, orderBy: { created_at: 'desc' } });
+}
+
+export async function findCustomerById(id: string) {
+  return prisma.customers.findUnique({ where: { id }, select: CUSTOMER_CRM_SELECT });
+}
+
+export interface CustomerWriteInput {
+  name?: string;
+  phone?: string;
+  email?: string;
+}
+
+export async function createCustomer(input: CustomerWriteInput) {
+  return prisma.customers.create({ data: input, select: CUSTOMER_CRM_SELECT });
+}
+
+export async function updateCustomer(id: string, input: CustomerWriteInput) {
+  return prisma.customers.update({ where: { id }, data: input, select: CUSTOMER_CRM_SELECT });
+}
+
 // ---------------------------------------------------------------------
 // External orders
 // ---------------------------------------------------------------------
@@ -224,4 +260,55 @@ export async function getExternalOrderDetailRow(id: string) {
 
 export async function updateExternalOrderStatusRow(id: string, status: string) {
   return prisma.external_orders.update({ where: { id }, data: { status } });
+}
+
+// ---------------------------------------------------------------------
+// SLA Escalation (FR-OC-09) -- "order mendekati deadline SLA namun belum
+// ada ticket". Threshold ("mendekati" = berapa menit) TIDAK ada di
+// SRS/contracts/api.yaml/schema -- WAJIB dikirim si pemanggil (service.ts),
+// tidak di-hardcode di sini. Lihat laporan audit soal ambiguity ini.
+// ---------------------------------------------------------------------
+
+/** Label `notifications.type` untuk alert eskalasi ini. Belum ada konvensi
+ *  resmi di repo untuk nama tipe ini -- dipilih di sini, bukan dari source
+ *  of truth. Sepakati ulang bareng tim kalau ada nama lain yang diinginkan. */
+export const SLA_ESCALATION_NOTIFICATION_TYPE = 'sla_escalation';
+
+export interface EscalationCandidate {
+  id: string;
+  platform_id: string;
+  external_order_id: string;
+  sla_type: string;
+  sla_deadline: Date | null;
+}
+
+/**
+ * Order yang deadline SLA-nya ada di antara `now` dan `now + windowMs`
+ * (BELUM lewat -- FR-OC-09 minta "mendekati", bukan "sudah lewat"), dan
+ * belum punya ticket sama sekali (relasi `tickets` kosong -- FR-OC-09).
+ */
+export async function findOrdersNeedingEscalation(now: Date, windowMs: number): Promise<EscalationCandidate[]> {
+  return prisma.external_orders.findMany({
+    where: {
+      sla_deadline: { not: null, gte: now, lte: new Date(now.getTime() + windowMs) },
+      tickets: { none: {} },
+    },
+    select: { id: true, platform_id: true, external_order_id: true, sla_type: true, sla_deadline: true },
+    orderBy: { sla_deadline: 'asc' },
+  });
+}
+
+/** Sudah pernah dibuatkan notifikasi eskalasi untuk order ini? (dedup --
+ *  cek ke tabel notifications langsung, bukan state in-memory, supaya
+ *  benar walau pengecekan ini dijalankan ulang lintas proses/restart). */
+export async function hasEscalationNotification(externalOrderId: string): Promise<boolean> {
+  const existing = await prisma.notifications.findFirst({
+    where: {
+      type: SLA_ESCALATION_NOTIFICATION_TYPE,
+      reference_type: 'external_order',
+      reference_id: externalOrderId,
+    },
+    select: { id: true },
+  });
+  return existing !== null;
 }

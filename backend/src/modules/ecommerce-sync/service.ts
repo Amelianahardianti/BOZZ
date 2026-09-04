@@ -9,6 +9,7 @@ import { getAdapter, isPlatformConfigured, platformAdapters } from './adapters/r
 import { classifySla, computeSlaDeadline } from './sla.util';
 import { notFound, conflict, unauthorized } from '../../shared/errors';
 import { publish, subscribe, EVENTS } from '../../shared/event-bus';
+import { createNotification, listStaff } from '../auth-product';
 import type { NormalizedOrder } from './types';
 
 const SYNC_LOOKBACK_SECONDS = 15 * 24 * 60 * 60; // ponytail: window tetap 15 hari, jadikan configurable kalau perlu backfill lebih dalam
@@ -225,6 +226,32 @@ export async function searchCustomers(query: string) {
   return repo.searchCustomers(q);
 }
 
+// CRM v2 (FR-OC-10). CATATAN: FR-OC-10 & contracts/api.yaml menyebut
+// "riwayat transaksi & analitik" di summary endpoint detail, tapi TIDAK
+// ADA field/rumus untuk itu di schema Customer manapun (contracts/api.yaml,
+// schema.prisma) -- sengaja TIDAK diimplementasikan di sini supaya tidak
+// mengarang bentuk data yang belum disepakati. Lihat laporan audit.
+
+export async function listCustomers() {
+  return repo.listCustomers();
+}
+
+export async function getCustomerDetail(id: string) {
+  const customer = await repo.findCustomerById(id);
+  if (!customer) throw notFound('Customer tidak ditemukan.');
+  return customer;
+}
+
+export async function createCustomer(input: repo.CustomerWriteInput) {
+  return repo.createCustomer(input);
+}
+
+export async function updateCustomerDetail(id: string, input: repo.CustomerWriteInput) {
+  const existing = await repo.findCustomerById(id);
+  if (!existing) throw notFound('Customer tidak ditemukan.');
+  return repo.updateCustomer(id, input);
+}
+
 // ---------------------------------------------------------------------
 // Webhook
 // ---------------------------------------------------------------------
@@ -305,3 +332,85 @@ subscribe(EVENTS.ORDER_STATUS_CHANGED, async (payload) => {
   if (!order) return;
   await forwardStatusToPlatform(order.platform_id, order.external_order_id, payload.new_status);
 });
+
+// ---------------------------------------------------------------------
+// SLA Escalation (FR-OC-09) — "order mendekati deadline SLA namun belum
+// ada ticket".
+//
+// TIDAK ada trigger otomatis (cron/scheduler) yang memanggil fungsi ini —
+// project ini belum punya infrastruktur scheduler sama sekali (tidak ada
+// node-cron/agenda/bull di dependencies, tidak ada pola cron lain di
+// backend/src). Menambah library scheduler baru malam ini bukan keputusan
+// yang bisa diambil sepihak, jadi TIDAK ditambahkan. Fungsi ini harus
+// dipanggil manual (mis. dari REPL/script operasional) sampai tim
+// menyepakati mekanisme trigger-nya (cron proses terpisah? cek saat
+// GET /orders dipanggil? worker terjadwal?).
+//
+// Threshold "mendekati deadline" JUGA tidak ada angka resminya di SRS/
+// contracts/api.yaml/schema — WAJIB di-set lewat env
+// SLA_ESCALATION_THRESHOLD_MINUTES, TIDAK di-hardcode ke angka tebakan.
+// Kalau env ini belum di-set, fungsi menolak jalan (throw) — supaya gagal
+// jelas kalau memang belum dikonfigurasi, bukan diam-diam pakai angka
+// yang tidak disepakati siapa pun.
+// ---------------------------------------------------------------------
+
+export interface SlaEscalationResult {
+  /** Jumlah order yang baru pertama kali dikirimi notifikasi eskalasi. */
+  notified: number;
+  /** Jumlah order yang eligible tapi sudah pernah dikirimi sebelumnya (dedup). */
+  skipped: number;
+}
+
+export async function runSlaEscalationCheck(now: Date = new Date()): Promise<SlaEscalationResult> {
+  const thresholdRaw = process.env.SLA_ESCALATION_THRESHOLD_MINUTES;
+  if (!thresholdRaw) {
+    throw new Error(
+      'SLA_ESCALATION_THRESHOLD_MINUTES belum di-set. FR-OC-09 tidak menyebutkan angka "mendekati deadline" ' +
+        'yang resmi — set env ini dulu (hasil kesepakatan tim) sebelum menjalankan pengecekan eskalasi.'
+    );
+  }
+  const thresholdMinutes = Number(thresholdRaw);
+  if (!Number.isFinite(thresholdMinutes) || thresholdMinutes <= 0) {
+    throw new Error('SLA_ESCALATION_THRESHOLD_MINUTES harus berupa angka menit yang positif.');
+  }
+  const windowMs = thresholdMinutes * 60 * 1000;
+
+  const candidates = await repo.findOrdersNeedingEscalation(now, windowMs);
+  let notified = 0;
+  let skipped = 0;
+  let owners: Awaited<ReturnType<typeof listStaff>> | null = null;
+
+  for (const order of candidates) {
+    if (await repo.hasEscalationNotification(order.id)) {
+      skipped++;
+      continue;
+    }
+
+    // listStaff() cuma diambil sekali, dipakai ulang untuk tiap order --
+    // daftar staf tidak berubah dalam satu kali jalan fungsi ini.
+    if (!owners) {
+      const staff = await listStaff();
+      owners = staff.filter((s) => s.role === 'owner' && s.is_active);
+    }
+
+    for (const owner of owners) {
+      try {
+        await createNotification({
+          userId: owner.id,
+          type: repo.SLA_ESCALATION_NOTIFICATION_TYPE,
+          title: 'Order mendekati deadline SLA, belum ada ticket',
+          message: `Order ${order.external_order_id} (SLA ${order.sla_type}) mendekati deadline dan belum punya ticket packing.`,
+          referenceType: 'external_order',
+          referenceId: order.id,
+        });
+      } catch (err) {
+        // Gagal notifikasi ke 1 owner TIDAK boleh menghentikan pengecekan
+        // order lain -- pola sama dengan sales-inventory/event-subscribers.ts.
+        console.error(`[ecommerce-sync] gagal bikin notifikasi eskalasi SLA untuk owner ${owner.id}`, err);
+      }
+    }
+    notified++;
+  }
+
+  return { notified, skipped };
+}
