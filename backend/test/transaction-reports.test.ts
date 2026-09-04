@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { app } from '../src/app';
 import { OWNER_ID, ownerToken, staffToken } from './helpers/auth';
+import { bikinCustomer } from './helpers/fixtures';
 import { describe, expect, it, jest } from '@jest/globals';
 
 async function seedProduct(token: string, stockQty = 50, price = 10000): Promise<string> {
@@ -104,7 +105,7 @@ describe('GET /api/transactions', () => {
   it('memfilter berdasarkan customer_type: ada pelanggan = marketplace, tanpa = walk_in', async () => {
     const token = ownerToken();
     const productId = await seedProduct(token);
-    const customerId = randomUUID();
+    const customerId = await bikinCustomer();
 
     const denganPelanggan = await checkout(token, productId, { customer_id: customerId });
     const tanpaPelanggan = await checkout(token, productId);

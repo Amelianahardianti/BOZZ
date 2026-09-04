@@ -6,6 +6,7 @@
 import request from 'supertest';
 import { app } from '../src/app';
 import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
+import { PRODUK_ROTI_ID } from './helpers/fixtures';
 import { describe, expect, it, jest } from '@jest/globals';
 
 /** Bikin produk lewat API, kembalikan response-nya. */
@@ -193,7 +194,7 @@ describe('GET /api/products/:id', () => {
     const token = kasirToken();
 
     const res = await request(app)
-      .get('/api/products/seed-product-1')
+      .get(`/api/products/${PRODUK_ROTI_ID}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
@@ -234,7 +235,7 @@ describe('PATCH /api/products/:id', () => {
     const token = ownerToken();
 
     const res = await request(app)
-      .patch('/api/products/seed-product-1')
+      .patch(`/api/products/${PRODUK_ROTI_ID}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ stock_qty: 999 });
 
@@ -244,7 +245,7 @@ describe('PATCH /api/products/:id', () => {
 
     // stok beneran tidak berubah
     const after = await request(app)
-      .get('/api/products/seed-product-1')
+      .get(`/api/products/${PRODUK_ROTI_ID}`)
       .set('Authorization', `Bearer ${token}`);
     expect(after.body.stock_qty).not.toBe(999);
   });
@@ -253,7 +254,7 @@ describe('PATCH /api/products/:id', () => {
     const token = ownerToken();
 
     const res = await request(app)
-      .patch('/api/products/seed-product-1')
+      .patch(`/api/products/${PRODUK_ROTI_ID}`)
       .set('Authorization', `Bearer ${token}`)
       .send({});
 
@@ -296,7 +297,7 @@ describe('PATCH /api/products/:id', () => {
     const token = kasirToken();
 
     const res = await request(app)
-      .patch('/api/products/seed-product-1')
+      .patch(`/api/products/${PRODUK_ROTI_ID}`)
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Diubah Kasir' });
 
