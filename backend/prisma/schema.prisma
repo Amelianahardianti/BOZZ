@@ -451,7 +451,7 @@ model store_settings {
   address             String?
   phone               String?  @db.VarChar(30)
   receipt_footer_note String?
-  logo_url            String?  @db.VarChar(500)
+  logo_url            String?
   updated_by          String?  @db.Uuid
   updated_at          DateTime @default(now()) @db.Timestamptz(6)
   users               users?   @relation(fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction)

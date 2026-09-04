@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CachedCategory, CachedProduct } from '../shell/offline/db'
+import type { CachedCategory, CachedProduct, CachedStoreSettings } from '../shell/offline/db'
 import * as outbox from '../shell/offline/outbox'
 import * as productCache from '../shell/offline/productCache'
+import * as storeSettingsCache from '../shell/offline/storeSettingsCache'
 import { KasirPage } from './KasirPage'
 
 vi.mock('../shell/offline/productCache', () => ({
@@ -11,12 +12,34 @@ vi.mock('../shell/offline/productCache', () => ({
   getCachedCategories: vi.fn(),
   syncProductCache: vi.fn(),
 }))
+vi.mock('../shell/offline/storeSettingsCache', () => ({
+  getCachedStoreSettings: vi.fn(),
+  syncStoreSettingsCache: vi.fn(),
+}))
 vi.mock('../shell/offline/outbox', () => ({ enqueueTransaction: vi.fn() }))
 
 const mockedGetCachedProducts = vi.mocked(productCache.getCachedProducts)
 const mockedGetCachedCategories = vi.mocked(productCache.getCachedCategories)
 const mockedSyncProductCache = vi.mocked(productCache.syncProductCache)
+const mockedGetCachedStoreSettings = vi.mocked(storeSettingsCache.getCachedStoreSettings)
+const mockedSyncStoreSettingsCache = vi.mocked(storeSettingsCache.syncStoreSettingsCache)
 const mockedEnqueueTransaction = vi.mocked(outbox.enqueueTransaction)
+
+function buildStoreSettings(overrides: Partial<CachedStoreSettings> = {}): CachedStoreSettings {
+  return {
+    id: 'settings-1',
+    business_name: 'Toko Saya',
+    address: null,
+    phone: null,
+    receipt_footer_note: null,
+    logo_url: null,
+    updated_by: null,
+    updated_at: new Date().toISOString(),
+    cacheKey: 'current',
+    cachedAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
 
 function buildProduct(overrides: Partial<CachedProduct> = {}): CachedProduct {
   return {
@@ -45,15 +68,18 @@ beforeEach(() => {
   mockedGetCachedProducts.mockResolvedValue([buildProduct()])
   mockedGetCachedCategories.mockResolvedValue([] as CachedCategory[])
   mockedSyncProductCache.mockResolvedValue(undefined)
+  mockedGetCachedStoreSettings.mockResolvedValue(buildStoreSettings())
+  mockedSyncStoreSettingsCache.mockResolvedValue(undefined)
   mockedEnqueueTransaction.mockResolvedValue('key-uji-123')
 })
 
 describe('KasirPage -- alur checkout lengkap', () => {
-  it('sync cache produk otomatis pas mount (device online)', async () => {
+  it('sync cache produk & profil toko otomatis pas mount (device online)', async () => {
     render(<KasirPage />)
 
     await screen.findByRole('button', { name: /Kopi Susu/ })
     expect(mockedSyncProductCache).toHaveBeenCalledTimes(1)
+    expect(mockedSyncStoreSettingsCache).toHaveBeenCalledTimes(1)
   })
 
   it('pilih produk -> bayar -> struk -> transaksi baru (alur penuh, cart kereset)', async () => {
@@ -79,8 +105,9 @@ describe('KasirPage -- alur checkout lengkap', () => {
       items: [{ product_id: 'produk-1', qty: 1 }],
     })
 
-    // 5. Struk muncul
+    // 5. Struk muncul, header pakai profil toko dari cache (bukan hardcoded)
     expect(await screen.findByText('Transaksi Berhasil')).toBeInTheDocument()
+    expect(screen.getByText('Toko Saya')).toBeInTheDocument()
     expect(screen.getByText(/Kopi Susu/)).toBeInTheDocument()
 
     // 6. Transaksi baru -- balik ke shopping, keranjang kosong

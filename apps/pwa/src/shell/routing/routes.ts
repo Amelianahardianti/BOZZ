@@ -11,8 +11,9 @@ export const ROUTES = {
   orders: '/orders',
   platforms: '/platforms',
   reports: '/reports',
-  staff: '/staff',
-  storeSettings: '/settings',
+  settings: '/settings',
+  staff: '/settings/staff',
+  storeSettings: '/settings/store',
   notifications: '/notifications',
 } as const
 
@@ -37,8 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.products, label: 'Produk', roles: ['owner'] },
   { path: ROUTES.platforms, label: 'Platform', roles: ['owner'] },
   { path: ROUTES.reports, label: 'Laporan', roles: ['owner'] },
-  { path: ROUTES.staff, label: 'Staf', roles: ['owner'] },
-  { path: ROUTES.storeSettings, label: 'Pengaturan Toko', roles: ['owner'] },
+  { path: ROUTES.settings, label: 'Pengaturan', roles: ['owner'] },
   { path: ROUTES.notifications, label: 'Notifikasi', roles: ['owner', 'kasir', 'pengepak'] },
 ]
 

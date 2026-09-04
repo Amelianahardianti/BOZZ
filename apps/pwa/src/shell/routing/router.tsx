@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
-import { createBrowserRouter, type RouteObject } from 'react-router-dom'
+import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
 import { AppShell } from '../layout/AppShell'
+import { SettingsLayout } from '../layout/SettingsLayout'
 import { RequireAuth } from '../auth/RequireAuth'
 import { RequireRole } from '../auth/RequireRole'
 import { DashboardPage } from '../../pages/DashboardPage'
@@ -61,8 +62,15 @@ export const routeConfig: RouteObject[] = [
       { path: 'orders', element: guarded(ROUTES.orders, <OrdersPage />) },
       { path: 'platforms', element: guarded(ROUTES.platforms, <PlatformsPage />) },
       { path: 'reports', element: guarded(ROUTES.reports, <ReportsPage />) },
-      { path: 'staff', element: guarded(ROUTES.staff, <StaffPage />) },
-      { path: 'settings', element: guarded(ROUTES.storeSettings, <StoreSettingsPage />) },
+      {
+        path: 'settings',
+        element: guarded(ROUTES.settings, <SettingsLayout />),
+        children: [
+          { index: true, element: <Navigate to="store" replace /> },
+          { path: 'store', element: <StoreSettingsPage /> },
+          { path: 'staff', element: <StaffPage /> },
+        ],
+      },
       { path: 'notifications', element: guarded(ROUTES.notifications, <NotificationsPage />) },
     ],
   },

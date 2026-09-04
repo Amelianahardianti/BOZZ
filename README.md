@@ -1,4 +1,4 @@
-# POS PWA Multi-Platform (v2 Flock Stock Track)
+# POS PWA Multi-Platform
 
 Monorepo: 1 backend Express (modular monolith) + 1 frontend PWA, terhubung
 lewat kontrak `contracts/api.yaml`.

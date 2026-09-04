@@ -87,6 +87,14 @@ export async function deactivateUser(id: string): Promise<User | null> {
   return result.rows[0] ?? null;
 }
 
+export async function activateUser(id: string): Promise<User | null> {
+  const result = await pool.query<User>(
+    `UPDATE users SET is_active = true, updated_at = now() WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return result.rows[0] ?? null;
+}
+
 export interface StoreSettings {
   id: string;
   business_name: string;

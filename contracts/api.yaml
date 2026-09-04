@@ -153,10 +153,29 @@ paths:
     patch:
       tags: [Staff]
       summary: Nonaktifkan akun staf
+      description: >
+        Akun role owner tidak bisa dinonaktifkan lewat endpoint ini
+        (400 VALIDATION_ERROR) -- Owner cuma dibuat sekali di awal
+        (seed), menonaktifkannya bisa bikin toko kehilangan satu-
+        satunya akun yang bisa ngurus staf.
       parameters: [{ $ref: "#/components/parameters/IdParam" }]
       responses:
         "200":
           description: Staf dinonaktifkan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /staff/{id}/activate:
+    patch:
+      tags: [Staff]
+      summary: Aktifkan kembali akun staf yang sebelumnya dinonaktifkan
+      parameters: [{ $ref: "#/components/parameters/IdParam" }]
+      responses:
+        "200":
+          description: Staf diaktifkan kembali
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }

@@ -1,3 +1,4 @@
+import type { StoreSettings } from '../../api/storeSettings'
 import type { PaymentMethod, TransactionType } from '../../api/transactions'
 import { formatRupiah } from '../../shell/currency'
 import { Button } from '../../shell/design-system'
@@ -15,6 +16,8 @@ export interface CompletedCheckout {
 
 interface ReceiptViewProps {
   checkout: CompletedCheckout
+  /** null kalau cache profil toko belum pernah ke-sync (mis. baru install PWA, langsung offline) -- header struk pakai fallback generik. */
+  storeSettings: Pick<StoreSettings, 'business_name' | 'address' | 'phone' | 'logo_url' | 'receipt_footer_note'> | null
   onNewTransaction: () => void
 }
 
@@ -25,11 +28,12 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
 }
 
 /**
- * Struk sederhana (FR-SI-05, versi awal) -- datanya dari input kasir
- * sendiri (bukan nunggu response server), makanya bisa langsung
- * tampil <2 detik walau offline (acceptance criteria POS Checkout).
- * Styling struk lengkap (logo toko dari store-settings, dll) nyusul
- * Fase 10.
+ * Struk (FR-SI-05) -- datanya dari input kasir sendiri (bukan nunggu
+ * response server), makanya bisa langsung tampil <2 detik walau
+ * offline (acceptance criteria POS Checkout). Header pakai profil
+ * toko (nama/alamat/telepon/logo dari Pengaturan Toko) yang dibaca
+ * dari cache lokal (shell/offline/storeSettingsCache.ts) -- sama-sama
+ * instan & offline-safe, gak nunggu jaringan kayak data produk.
  *
  * Lebar `w-[58mm]` SENGAJA dipakai baik di layar maupun pas print --
  * unit mm dikonversi browser secara konsisten di dua-duanya, jadi apa
@@ -39,13 +43,24 @@ const PAYMENT_LABEL: Record<PaymentMethod, string> = {
  * itu satu-satunya cara ngatur ukuran halaman print, gak bisa lewat
  * className.
  */
-export function ReceiptView({ checkout, onNewTransaction }: ReceiptViewProps) {
+export function ReceiptView({ checkout, storeSettings, onNewTransaction }: ReceiptViewProps) {
   const change = checkout.amountPaid !== null ? checkout.amountPaid - checkout.subtotal : null
 
   return (
     <div className="flex h-full flex-col items-center gap-4 overflow-y-auto py-2">
       <div className="w-[58mm] bg-white p-2 font-mono text-[11px] leading-tight text-black print:p-1">
         <div className="mb-2 text-center">
+          {storeSettings?.logo_url && (
+            <img src={storeSettings.logo_url} alt="Logo toko" className="mx-auto mb-1 h-12 w-12 object-contain" />
+          )}
+          <p className="font-bold">{storeSettings?.business_name || 'Toko'}</p>
+          {storeSettings?.address && <p>{storeSettings.address}</p>}
+          {storeSettings?.phone && <p>{storeSettings.phone}</p>}
+        </div>
+
+        <div className="border-t border-dashed border-black" />
+
+        <div className="my-1.5 text-center">
           <p className="font-bold">Transaksi Berhasil</p>
           <p>{new Date(checkout.createdAt).toLocaleString('id-ID')}</p>
           <p>#{checkout.idempotencyKey.slice(0, 8)}</p>
@@ -97,7 +112,7 @@ export function ReceiptView({ checkout, onNewTransaction }: ReceiptViewProps) {
         </div>
 
         <div className="mt-2 border-t border-dashed border-black pt-1.5 text-center">
-          <p>Terima kasih!</p>
+          <p>{storeSettings?.receipt_footer_note || 'Terima kasih!'}</p>
         </div>
       </div>
 

@@ -121,6 +121,31 @@ describe('error dari validasi input', () => {
     expect(res.status).toBe(400);
     expect(expectStandardShape(res.body).code).toBe('VALIDATION_ERROR');
   });
+
+  it('body di bawah 1mb (mis. logo toko base64 hasil compress) TETAP lolos ke validasi, bukan ditolak body-parser', async () => {
+    // Batas body-parser (app.ts) sengaja dilebarin ke 1mb -- limit
+    // default Express cuma 100kb, kepentok sama base64 logo yang bisa
+    // ratusan KB. Field yang dites gak eksis di schema auth/login,
+    // makanya 400 yang balik dari SINI harus ZodError (field asing
+    // ditolak zod), BUKAN error body-parser "entity.too.large" --
+    // buktinya cukup gede buat lewatin limit lama (100kb) tapi masih
+    // ke-proses normal.
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email_or_username: 'owner', password: 'x'.repeat(150_000) });
+
+    expect(res.status).toBe(401); // password salah -> INVALID_CREDENTIALS, bukan body ditolak
+    expect(expectStandardShape(res.body).code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('body di atas 1mb ditolak body-parser (400 VALIDATION_ERROR)', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email_or_username: 'owner', password: 'x'.repeat(1_100_000) });
+
+    expect(res.status).toBe(400);
+    expect(expectStandardShape(res.body).code).toBe('VALIDATION_ERROR');
+  });
 });
 
 describe('error yang dilempar service (bentuk object lama)', () => {

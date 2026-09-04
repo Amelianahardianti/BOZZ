@@ -4,6 +4,7 @@ import { useOnlineStatus } from '../shell/offline/connectivity'
 import type { CachedProduct } from '../shell/offline/db'
 import { enqueueTransaction } from '../shell/offline/outbox'
 import { getCachedCategories, getCachedProducts, syncProductCache } from '../shell/offline/productCache'
+import { getCachedStoreSettings, syncStoreSettingsCache } from '../shell/offline/storeSettingsCache'
 import { useOutboxStatus } from '../shell/offline/useOutboxStatus'
 import { CartPanel } from './kasir/CartPanel'
 import { PaymentPanel, type PaymentDetails } from './kasir/PaymentPanel'
@@ -25,6 +26,7 @@ export function KasirPage() {
 
   const products = useLiveQuery(() => getCachedProducts(), []) ?? []
   const categories = useLiveQuery(() => getCachedCategories(), []) ?? []
+  const storeSettings = useLiveQuery(() => getCachedStoreSettings(), []) ?? null
 
   const [cart, setCart] = useState<CartItem[]>([])
   const [view, setView] = useState<View>('shopping')
@@ -35,6 +37,9 @@ export function KasirPage() {
     if (online) {
       syncProductCache().catch((err: unknown) => {
         console.error('Gagal sync cache produk:', err)
+      })
+      syncStoreSettingsCache().catch((err: unknown) => {
+        console.error('Gagal sync cache profil toko:', err)
       })
     }
   }, [online])
@@ -134,7 +139,7 @@ export function KasirPage() {
       )}
 
       {view === 'receipt' && lastCheckout && (
-        <ReceiptView checkout={lastCheckout} onNewTransaction={handleNewTransaction} />
+        <ReceiptView checkout={lastCheckout} storeSettings={storeSettings} onNewTransaction={handleNewTransaction} />
       )}
     </div>
   )

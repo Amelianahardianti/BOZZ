@@ -45,7 +45,7 @@ afterEach(() => {
 
 describe('ReceiptView', () => {
   it('nampilin item, subtotal, uang diterima, dan kembalian yang bener', () => {
-    render(<ReceiptView checkout={buildCheckout()} onNewTransaction={vi.fn()} />)
+    render(<ReceiptView checkout={buildCheckout()} storeSettings={null} onNewTransaction={vi.fn()} />)
 
     expect(screen.getByText('Kopi Susu')).toBeInTheDocument()
     expect(screen.getByText(/2 x Rp\s*18\.000/)).toBeInTheDocument()
@@ -58,6 +58,7 @@ describe('ReceiptView', () => {
     render(
       <ReceiptView
         checkout={buildCheckout({ paymentMethod: 'transfer', amountPaid: null })}
+        storeSettings={null}
         onNewTransaction={vi.fn()}
       />,
     )
@@ -66,11 +67,59 @@ describe('ReceiptView', () => {
     expect(screen.queryByText('Kembali')).not.toBeInTheDocument()
   })
 
+  it('storeSettings null (cache belum pernah sync) -- fallback "Toko" & "Terima kasih!", gak nge-crash', () => {
+    render(<ReceiptView checkout={buildCheckout()} storeSettings={null} onNewTransaction={vi.fn()} />)
+
+    expect(screen.getByText('Toko')).toBeInTheDocument()
+    expect(screen.getByText('Terima kasih!')).toBeInTheDocument()
+  })
+
+  it('storeSettings terisi -- nama toko, alamat, telepon, logo, dan catatan kaki custom ikut tampil', () => {
+    render(
+      <ReceiptView
+        checkout={buildCheckout()}
+        storeSettings={{
+          business_name: 'Kopi Kita',
+          address: 'Jl. Melati No. 5',
+          phone: '08123456789',
+          logo_url: 'data:image/jpeg;base64,xxxx',
+          receipt_footer_note: 'Sampai jumpa lagi!',
+        }}
+        onNewTransaction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Kopi Kita')).toBeInTheDocument()
+    expect(screen.getByText('Jl. Melati No. 5')).toBeInTheDocument()
+    expect(screen.getByText('08123456789')).toBeInTheDocument()
+    expect(screen.getByAltText('Logo toko')).toHaveAttribute('src', 'data:image/jpeg;base64,xxxx')
+    expect(screen.getByText('Sampai jumpa lagi!')).toBeInTheDocument()
+    expect(screen.queryByText('Terima kasih!')).not.toBeInTheDocument()
+  })
+
+  it('storeSettings terisi tapi logo_url kosong -- gak nampilin <img> sama sekali', () => {
+    render(
+      <ReceiptView
+        checkout={buildCheckout()}
+        storeSettings={{
+          business_name: 'Kopi Kita',
+          address: null,
+          phone: null,
+          logo_url: null,
+          receipt_footer_note: null,
+        }}
+        onNewTransaction={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByAltText('Logo toko')).not.toBeInTheDocument()
+  })
+
   it('tombol Cetak Struk manggil window.print()', async () => {
     const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
     const user = userEvent.setup()
 
-    render(<ReceiptView checkout={buildCheckout()} onNewTransaction={vi.fn()} />)
+    render(<ReceiptView checkout={buildCheckout()} storeSettings={null} onNewTransaction={vi.fn()} />)
     await user.click(screen.getByRole('button', { name: 'Cetak Struk' }))
 
     expect(printSpy).toHaveBeenCalledTimes(1)
@@ -80,7 +129,7 @@ describe('ReceiptView', () => {
     const onNewTransaction = vi.fn()
     const user = userEvent.setup()
 
-    render(<ReceiptView checkout={buildCheckout()} onNewTransaction={onNewTransaction} />)
+    render(<ReceiptView checkout={buildCheckout()} storeSettings={null} onNewTransaction={onNewTransaction} />)
     await user.click(screen.getByRole('button', { name: 'Transaksi Baru' }))
 
     expect(onNewTransaction).toHaveBeenCalledTimes(1)
