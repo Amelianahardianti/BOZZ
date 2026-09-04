@@ -12,14 +12,22 @@
 
 import { randomUUID } from 'crypto';
 import request from 'supertest';
-import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import { app } from '../src/app';
 import * as repo from '../src/modules/auth-product/repository';
 import type { Notification, User } from '../src/modules/auth-product/repository';
 import { OWNER_ID, ownerToken, staffToken, tokenFor } from './helpers/auth';
+import { bikinExternalOrder, pinjamAkun, siapkanKolamAkun } from './helpers/fixtures';
 import { EVENTS, OrderStatusChangedPayload, subscribe } from '../src/shared/event-bus';
 
 jest.mock('../src/modules/auth-product/repository');
+
+// Baris users buat dipinjam sebagai penerima ticket. Cuma perlu ADA:
+// boleh/tidaknya sebuah akun dikasih ticket tetap ditentukan mock di
+// bawah, bukan isi tabel users.
+beforeAll(async () => {
+  await siapkanKolamAkun();
+});
 
 const mockedRepo = repo as jest.Mocked<typeof repo>;
 
@@ -30,7 +38,7 @@ afterEach(() => {
 /** Akun palsu buat isi mock repo -- tidak pernah ke database beneran. */
 function buildUser(overrides: Partial<User> = {}): User {
   return {
-    id: 'user-1',
+    id: pinjamAkun(),
     name: 'Staf Uji',
     email_or_username: 'staf',
     password_hash: '$2a$10$tidakDipakaiLangsungDiTest.................',
@@ -74,7 +82,7 @@ function mockUsers(...users: User[]): void {
 /** Pengepak aktif, tujuan penugasan yang normal. */
 function seedPengepak(overrides: Partial<User> = {}): User {
   const pengepak = buildUser({
-    id: `pengepak-${randomUUID().slice(0, 8)}`,
+    id: pinjamAkun(),
     name: 'Pak Pengepak',
     role: 'pengepak',
     ...overrides,
@@ -101,7 +109,7 @@ describe('POST /api/tickets', () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
     const productId = await seedProduct(token, 'Sabun Batang');
-    const orderId = randomUUID();
+    const orderId = await bikinExternalOrder();
 
     const res = await createTicket(token, {
       external_order_id: orderId,
@@ -137,7 +145,7 @@ describe('POST /api/tickets', () => {
     const pengepak = seedPengepak();
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: await seedProduct(token), qty: 1 }],
     });
@@ -151,7 +159,7 @@ describe('POST /api/tickets', () => {
     const productId = await seedProduct(token, 'Nama Saat Ticket Dibuat');
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: productId, qty: 3 }],
     });
@@ -182,7 +190,7 @@ describe('POST /api/tickets', () => {
       .set('Authorization', `Bearer ${token}`);
 
     await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: productId, qty: 5 }],
     });
@@ -199,7 +207,7 @@ describe('POST /api/tickets', () => {
     const productId = await seedProduct(token);
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [
         { product_id: productId, qty: 2 },
@@ -213,11 +221,11 @@ describe('POST /api/tickets', () => {
 
   it('menolak penugasan ke staf yang bukan Pengepak', async () => {
     const token = ownerToken();
-    const kasir = buildUser({ id: 'kasir-1', name: 'Mbak Kasir', role: 'kasir' });
+    const kasir = buildUser({ id: pinjamAkun(), name: 'Mbak Kasir', role: 'kasir' });
     mockUsers(kasir);
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: kasir.id,
       items: [{ product_id: await seedProduct(token), qty: 1 }],
     });
@@ -232,7 +240,7 @@ describe('POST /api/tickets', () => {
     mockUsers(); // tidak ada akun sama sekali
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: 'user-hantu',
       items: [{ product_id: await seedProduct(token), qty: 1 }],
     });
@@ -246,7 +254,7 @@ describe('POST /api/tickets', () => {
     const nonaktif = seedPengepak({ is_active: false });
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: nonaktif.id,
       items: [{ product_id: await seedProduct(token), qty: 1 }],
     });
@@ -260,7 +268,7 @@ describe('POST /api/tickets', () => {
     const pengepak = seedPengepak();
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: 'produk-hantu', qty: 1 }],
     });
@@ -273,7 +281,7 @@ describe('POST /api/tickets', () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
     const productId = await seedProduct(token);
-    const orderId = randomUUID();
+    const orderId = await bikinExternalOrder();
     const body = {
       external_order_id: orderId,
       assigned_to_user_id: pengepak.id,
@@ -299,20 +307,20 @@ describe('POST /api/tickets', () => {
     expect(tanpaOrder.status).toBe(400);
 
     const tanpaPenerima = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       items: [{ product_id: productId, qty: 1 }],
     });
     expect(tanpaPenerima.status).toBe(400);
 
     const itemKosong = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [],
     });
     expect(itemKosong.status).toBe(400);
 
     const qtyNol = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: productId, qty: 0 }],
     });
@@ -324,7 +332,7 @@ describe('POST /api/tickets', () => {
     const pengepak = seedPengepak();
 
     const res = await createTicket(token, {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: await seedProduct(token), qty: 1 }],
     });
@@ -338,7 +346,7 @@ describe('POST /api/tickets', () => {
     const pengepak = seedPengepak();
     const productId = await seedProduct(owner);
     const body = {
-      external_order_id: randomUUID(),
+      external_order_id: await bikinExternalOrder(),
       assigned_to_user_id: pengepak.id,
       items: [{ product_id: productId, qty: 1 }],
     };
@@ -369,7 +377,7 @@ describe('GET /api/tickets', () => {
   it('membalas array polos berisi ticket lengkap dengan itemnya', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const orderId = randomUUID();
+    const orderId = await bikinExternalOrder();
 
     await createTicket(token, {
       external_order_id: orderId,
@@ -399,8 +407,8 @@ describe('GET /api/tickets', () => {
     const pengepak = seedPengepak();
     const productId = await seedProduct(token);
 
-    const lama = randomUUID();
-    const baru = randomUUID();
+    const lama = await bikinExternalOrder();
+    const baru = await bikinExternalOrder();
     await createTicket(token, {
       external_order_id: lama,
       assigned_to_user_id: pengepak.id,
@@ -424,7 +432,7 @@ describe('GET /api/tickets', () => {
   it('memfilter berdasarkan status', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const orderId = randomUUID();
+    const orderId = await bikinExternalOrder();
 
     await createTicket(token, {
       external_order_id: orderId,
@@ -457,7 +465,7 @@ describe('GET /api/tickets', () => {
 
     for (let i = 0; i < 2; i += 1) {
       await createTicket(token, {
-        external_order_id: randomUUID(),
+        external_order_id: await bikinExternalOrder(),
         assigned_to_user_id: pengepak.id,
         items: [{ product_id: productId, qty: 1 }],
       });
@@ -514,12 +522,12 @@ describe('GET /api/tickets/my', () => {
     const token = ownerToken();
     const productId = await seedProduct(token);
 
-    const saya = buildUser({ id: `pengepak-saya-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const oranglain = buildUser({ id: `pengepak-lain-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const saya = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const oranglain = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(saya, oranglain);
 
-    const orderSaya = randomUUID();
-    const orderOrangLain = randomUUID();
+    const orderSaya = await bikinExternalOrder();
+    const orderOrangLain = await bikinExternalOrder();
     await createTicket(token, {
       external_order_id: orderSaya,
       assigned_to_user_id: saya.id,
@@ -550,11 +558,11 @@ describe('GET /api/tickets/my', () => {
     const token = ownerToken();
     const productId = await seedProduct(token);
 
-    const saya = buildUser({ id: `pengepak-a-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const oranglain = buildUser({ id: `pengepak-b-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const saya = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const oranglain = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(saya, oranglain);
 
-    const orderOrangLain = randomUUID();
+    const orderOrangLain = await bikinExternalOrder();
     await createTicket(token, {
       external_order_id: orderOrangLain,
       assigned_to_user_id: oranglain.id,
@@ -575,7 +583,7 @@ describe('GET /api/tickets/my', () => {
   it('membalas array kosong kalau belum dapat ticket sama sekali', async () => {
     const res = await request(app)
       .get('/api/tickets/my')
-      .set('Authorization', `Bearer ${tokenFor('pengepak', `pengepak-baru-${randomUUID()}`)}`);
+      .set('Authorization', `Bearer ${tokenFor('pengepak', pinjamAkun())}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
@@ -584,11 +592,11 @@ describe('GET /api/tickets/my', () => {
   it('mengurutkan dari ticket paling lama', async () => {
     const token = ownerToken();
     const productId = await seedProduct(token);
-    const saya = buildUser({ id: `pengepak-urut-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const saya = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(saya);
 
-    const lama = randomUUID();
-    const baru = randomUUID();
+    const lama = await bikinExternalOrder();
+    const baru = await bikinExternalOrder();
     await createTicket(token, {
       external_order_id: lama,
       assigned_to_user_id: saya.id,
@@ -612,7 +620,7 @@ describe('GET /api/tickets/my', () => {
 describe('PATCH /api/tickets/:id/assign', () => {
   /** Bikin satu ticket yang sudah dipegang `pemilikAwal`. */
   async function seedTicket(token: string, pemilikAwal: User): Promise<{ id: string; order: string }> {
-    const order = randomUUID();
+    const order = await bikinExternalOrder();
     const res = await createTicket(token, {
       external_order_id: order,
       assigned_to_user_id: pemilikAwal.id,
@@ -631,9 +639,9 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('memindahkan ticket ke pengepak lain', async () => {
     const token = ownerToken();
-    const lama = buildUser({ id: `pengepak-lama-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const lama = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     const baru = buildUser({
-      id: `pengepak-baru-${randomUUID().slice(0, 8)}`,
+      id: pinjamAkun(),
       name: 'Pengepak Pengganti',
       role: 'pengepak',
     });
@@ -655,8 +663,8 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('membuat notifikasi untuk pengepak yang baru ditugaskan', async () => {
     const token = ownerToken();
-    const lama = buildUser({ id: `pengepak-l-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const baru = buildUser({ id: `pengepak-b-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const lama = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const baru = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(lama, baru);
     const ticket = await seedTicket(token, lama);
 
@@ -676,8 +684,8 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('notifikasinya ditujukan ke penerima baru, bukan ke pengepak lama', async () => {
     const token = ownerToken();
-    const lama = buildUser({ id: `pengepak-x-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const baru = buildUser({ id: `pengepak-y-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const lama = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const baru = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(lama, baru);
     const ticket = await seedTicket(token, lama);
 
@@ -690,8 +698,8 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('ticket pindah ke antrean pengepak baru, hilang dari antrean yang lama', async () => {
     const token = ownerToken();
-    const lama = buildUser({ id: `pengepak-p-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const baru = buildUser({ id: `pengepak-q-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const lama = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const baru = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(lama, baru);
     const ticket = await seedTicket(token, lama);
 
@@ -710,8 +718,8 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('penugasan tetap berhasil walau pembuatan notifikasi gagal', async () => {
     const token = ownerToken();
-    const lama = buildUser({ id: `pengepak-n1-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const baru = buildUser({ id: `pengepak-n2-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const lama = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const baru = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(lama, baru);
     const ticket = await seedTicket(token, lama);
 
@@ -733,8 +741,8 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('menolak penugasan ke staf yang bukan Pengepak', async () => {
     const token = ownerToken();
-    const pengepak = buildUser({ id: `pengepak-r-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const kasir = buildUser({ id: 'kasir-assign', name: 'Mbak Kasir', role: 'kasir' });
+    const pengepak = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const kasir = buildUser({ id: pinjamAkun(), name: 'Mbak Kasir', role: 'kasir' });
     mockUsers(pengepak, kasir);
     const ticket = await seedTicket(token, pengepak);
 
@@ -747,9 +755,9 @@ describe('PATCH /api/tickets/:id/assign', () => {
 
   it('menolak penugasan ke akun tidak dikenal atau yang sudah nonaktif', async () => {
     const token = ownerToken();
-    const pengepak = buildUser({ id: `pengepak-s-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const pengepak = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     const nonaktif = buildUser({
-      id: `pengepak-off-${randomUUID().slice(0, 8)}`,
+      id: pinjamAkun(),
       role: 'pengepak',
       is_active: false,
     });
@@ -812,7 +820,7 @@ describe('PATCH /api/tickets/:id/status', () => {
     token: string,
     pemilik: User
   ): Promise<{ id: string; order: string; items: { id: string }[] }> {
-    const order = randomUUID();
+    const order = await bikinExternalOrder();
     const res = await createTicket(token, {
       external_order_id: order,
       assigned_to_user_id: pemilik.id,
@@ -996,8 +1004,8 @@ describe('PATCH /api/tickets/:id/status', () => {
 
   it('pengepak TIDAK boleh menyentuh ticket pengepak lain', async () => {
     const owner = ownerToken();
-    const pemilik = buildUser({ id: `pengepak-m-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
-    const penyusup = buildUser({ id: `pengepak-n-${randomUUID().slice(0, 8)}`, role: 'pengepak' });
+    const pemilik = buildUser({ id: pinjamAkun(), role: 'pengepak' });
+    const penyusup = buildUser({ id: pinjamAkun(), role: 'pengepak' });
     mockUsers(pemilik, penyusup);
     const ticket = await seedTicket2Item(owner, pemilik);
 
