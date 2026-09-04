@@ -30,10 +30,16 @@ export const PRODUK_TEH_ID = '22222222-2222-4222-8222-222222222202';
 export async function bikinExternalOrder(): Promise<string> {
   // Platform mana pun boleh; yang penting baris external_orders-nya ada.
   // Dipakai ulang kalau sudah ada, biar test tidak menumpuk platform.
+  //
+  // Nama platform TIDAK bebas: ada CHECK platforms_platform_name_check yang
+  // cuma mengizinkan shopee/tokopedia/tiktok/fakestore. Dipakai 'fakestore'
+  // -- satu-satunya yang tidak butuh credential -- dan kebetulan juga yang
+  // pertama secara alfabet, jadi baris yang dipakai sama saja antara
+  // database kosong (CI) dan database dev yang sudah berisi ketiganya.
   const platform =
     (await prisma.platforms.findFirst({ orderBy: { platform_name: 'asc' } })) ??
     (await prisma.platforms.create({
-      data: { platform_name: 'test-fixture', is_connected: false },
+      data: { platform_name: 'fakestore', is_connected: false },
     }));
 
   const order = await prisma.external_orders.create({
