@@ -99,7 +99,27 @@ export async function updateStaff(
 }
 
 export async function deactivateStaff(id: string) {
+  const target = await repo.findById(id);
+  if (!target) {
+    throw { status: 404, code: 'NOT_FOUND', message: 'Staf tidak ditemukan.' };
+  }
+
+  // Akun Owner cuma dibikin sekali di awal (seed), bukan lewat form
+  // staff -- jadi juga gak boleh dinonaktifkan lewat sini. Ini nutup
+  // dua kasus sekaligus: Owner nonaktifin dirinya sendiri (endpoint
+  // ini cuma bisa dipanggil Owner, jadi target=diri sendiri itu salah
+  // satu kemungkinannya) DAN Owner nonaktifin Owner lain -- dua-duanya
+  // bisa bikin toko kehilangan satu-satunya akun yang bisa ngurus staf.
+  if (target.role === 'owner') {
+    throw { status: 400, code: 'VALIDATION_ERROR', message: 'Akun Owner tidak bisa dinonaktifkan.' };
+  }
+
   const updated = await repo.deactivateUser(id);
+  return toPublicUser(updated!);
+}
+
+export async function activateStaff(id: string) {
+  const updated = await repo.activateUser(id);
   if (!updated) {
     throw { status: 404, code: 'NOT_FOUND', message: 'Staf tidak ditemukan.' };
   }

@@ -175,6 +175,44 @@ describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
   })
 })
 
+describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
+  it('cuma ada SATU link "Pengaturan" di nav, bukan dua link terpisah', async () => {
+    renderAt(ROUTES.dashboard, 'owner')
+    await screen.findByRole('heading', { name: 'Dashboard' })
+
+    expect(screen.getAllByRole('link', { name: 'Pengaturan' }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('link', { name: 'Staf' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Pengaturan Toko' })).not.toBeInTheDocument()
+  })
+
+  it('/settings dialihkan ke /settings/store (tab Toko default)', async () => {
+    const router = renderAt(ROUTES.settings, 'owner')
+
+    expect(await screen.findByRole('heading', { name: 'Pengaturan Toko' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(ROUTES.storeSettings)
+  })
+
+  it('klik tab "Staf" pindah ke /settings/staff tanpa keluar dari Pengaturan', async () => {
+    const user = userEvent.setup()
+    const router = renderAt(ROUTES.settings, 'owner')
+    await screen.findByRole('heading', { name: 'Pengaturan Toko' })
+
+    await user.click(screen.getByRole('link', { name: 'Staf' }))
+
+    expect(await screen.findByRole('heading', { name: 'Staf' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(ROUTES.staff)
+    // Tab "Toko" masih ada buat balik lagi -- bukan ilang abis pindah tab.
+    expect(screen.getByRole('link', { name: 'Toko' })).toBeInTheDocument()
+  })
+
+  it('Kasir/Pengepak gak bisa akses /settings/staff sama sekali (dialihkan ke halaman defaultnya)', async () => {
+    const router = renderAt(ROUTES.staff, 'kasir')
+
+    await screen.findByRole('heading', { name: 'Kasir' })
+    expect(router.state.location.pathname).toBe(ROUTES.kasir)
+  })
+})
+
 describe('Alur "kena lempar ke login, balik lagi ke halaman tujuan"', () => {
   it('coba akses /staff tanpa login -> login -> balik ke /staff (bukan ke halaman default)', async () => {
     vi.mocked(authApi.login).mockResolvedValue(sessionFor('owner'))
