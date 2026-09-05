@@ -66,3 +66,45 @@ export async function postTransaction(body: TransactionCreateRequest, idempotenc
     headers: { 'Idempotency-Key': idempotencyKey },
   })
 }
+
+function requireToken(): string {
+  const session = readStoredSession()
+  if (!session) {
+    throw new Error('Dipanggil tanpa sesi login -- halaman Riwayat Transaksi wajib login.')
+  }
+  return session.token
+}
+
+export interface FetchTransactionsParams {
+  date_from?: string
+  date_to?: string
+  payment_method?: PaymentMethod
+  customer_type?: 'walk_in' | 'marketplace'
+  page?: number
+  limit?: number
+}
+
+export interface PaginatedTransactions {
+  data: Transaction[]
+  page: number
+  limit: number
+  total: number
+}
+
+/** GET /api/transactions -- Owner/Kasir. Dibungkus {data, page, limit, total}. */
+export async function fetchTransactions(params: FetchTransactionsParams = {}): Promise<PaginatedTransactions> {
+  const query = new URLSearchParams()
+  if (params.date_from) query.set('date_from', params.date_from)
+  if (params.date_to) query.set('date_to', params.date_to)
+  if (params.payment_method) query.set('payment_method', params.payment_method)
+  if (params.customer_type) query.set('customer_type', params.customer_type)
+  if (params.page !== undefined) query.set('page', String(params.page))
+  if (params.limit !== undefined) query.set('limit', String(params.limit))
+  const qs = query.toString()
+  return apiRequest<PaginatedTransactions>(`/transactions${qs ? `?${qs}` : ''}`, { token: requireToken() })
+}
+
+/** GET /api/transactions/:id -- Owner/Kasir. Sumber data struk (item, harga saat itu, total, kembalian). */
+export async function fetchTransaction(id: string): Promise<Transaction> {
+  return apiRequest<Transaction>(`/transactions/${id}`, { token: requireToken() })
+}

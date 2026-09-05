@@ -8,9 +8,16 @@ import {
   type SlaType,
 } from '../../api/orders'
 import { fetchPlatforms, type Platform } from '../../api/platforms'
+import { createTicket } from '../../api/tickets'
+import { fetchStaff, type Staff } from '../../api/staff'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import { Button, Card, EmptyState, PageHeader, TextInput } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
+
+// Order yang masih aktif (belum selesai/batal) yang boleh dibikinkan
+// ticket packing -- order yang sudah completed/cancelled gak relevan lagi
+// buat dikemas.
+const TICKETABLE_STATUSES: ExternalOrderStatus[] = ['new', 'processing']
 
 const STATUS_LABEL: Record<ExternalOrderStatus, string> = {
   new: 'Baru',
@@ -60,6 +67,19 @@ export function OrdersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+
+  const [pengepakList, setPengepakList] = useState<Staff[]>([])
+  const [creatingTicketFor, setCreatingTicketFor] = useState<OrderDetail | null>(null)
+  const [ticketPengepakId, setTicketPengepakId] = useState('')
+  const [ticketNotes, setTicketNotes] = useState('')
+  const [ticketError, setTicketError] = useState<string | null>(null)
+  const [isCreatingTicket, setIsCreatingTicket] = useState(false)
+  // Order yang barusan dibikinkan ticket -- ditandai lokal biar tombol
+  // "Buat Ticket"-nya langsung hilang tanpa nunggu reload, TAPI ini
+  // cuma tau ticket yang dibikin lewat sesi halaman ini sendiri. Kalau
+  // order-nya udah punya ticket dari sesi/pengguna lain, backend yang
+  // nolak (409 Conflict) -- pesannya ditampilin apa adanya.
+  const [ticketCreatedOrderIds, setTicketCreatedOrderIds] = useState<Set<string>>(new Set())
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(10)
@@ -119,6 +139,55 @@ export function OrdersPage() {
       })
       .finally(() => setIsLoading(false))
   }, [filters, page, pageSize])
+
+  // Daftar pengepak gak terikat filter/halaman order, jadi cukup ditarik
+  // sekali pas halaman dibuka -- dipakai buat dropdown di form "Buat Ticket".
+  useEffect(() => {
+    fetchStaff()
+      .then((staff) => setPengepakList(staff.filter((s) => s.role === 'pengepak' && s.is_active)))
+      .catch(() => {
+        // Gagal diam-diam -- dropdown pengepak bakal kosong, ketauan pas
+        // user coba buka form "Buat Ticket" (gak ada pilihan sama sekali).
+      })
+  }, [])
+
+  function openCreateTicket(order: OrderDetail) {
+    setCreatingTicketFor(order)
+    setTicketPengepakId('')
+    setTicketNotes('')
+    setTicketError(null)
+  }
+
+  async function handleCreateTicket() {
+    if (!creatingTicketFor) return
+    if (!ticketPengepakId) {
+      setTicketError('Pilih pengepak dulu.')
+      return
+    }
+
+    const validItems = creatingTicketFor.items.filter((item) => item.product_id)
+    if (validItems.length === 0) {
+      setTicketError('Order ini gak punya item dengan produk yang cocok di katalog -- gak bisa dibikinkan ticket.')
+      return
+    }
+
+    setIsCreatingTicket(true)
+    setTicketError(null)
+    try {
+      await createTicket({
+        external_order_id: creatingTicketFor.id,
+        assigned_to_user_id: ticketPengepakId,
+        notes: ticketNotes.trim() || undefined,
+        items: validItems.map((item) => ({ product_id: item.product_id as string, qty: item.qty })),
+      })
+      setTicketCreatedOrderIds((prev) => new Set(prev).add(creatingTicketFor.id))
+      setCreatingTicketFor(null)
+    } catch (err) {
+      setTicketError(err instanceof ApiRequestError ? err.message : 'Gagal membuat ticket.')
+    } finally {
+      setIsCreatingTicket(false)
+    }
+  }
 
   async function handleUpdateStatus(orderId: string, newStatus: ExternalOrderStatus) {
     setUpdatingOrderId(orderId)
@@ -282,6 +351,14 @@ export function OrdersPage() {
                       </option>
                     ))}
                   </select>
+                  {TICKETABLE_STATUSES.includes(order.status) && !ticketCreatedOrderIds.has(order.id) && (
+                    <Button variant="secondary" onClick={() => openCreateTicket(order)}>
+                      Buat Ticket
+                    </Button>
+                  )}
+                  {ticketCreatedOrderIds.has(order.id) && (
+                    <span className="text-xs font-medium text-green-600">Ticket dibuat</span>
+                  )}
                 </div>
               </div>
             </Card>
@@ -298,6 +375,83 @@ export function OrdersPage() {
           <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
             Berikutnya
           </Button>
+        </div>
+      )}
+
+      {creatingTicketFor && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+        >
+          <Card className="w-full max-w-md">
+            <div className="flex flex-col gap-4">
+              <h2 className="text-base font-semibold text-slate-900">
+                Buat Ticket -- {creatingTicketFor.external_order_id}
+              </h2>
+
+              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                {(() => {
+                  const validItems = creatingTicketFor.items.filter((item) => item.product_id)
+                  const invalidCount = creatingTicketFor.items.length - validItems.length
+                  return (
+                    <>
+                      <p className="font-medium">Item ({validItems.length}):</p>
+                      <ul className="list-disc pl-4">
+                        {validItems.map((item) => (
+                          <li key={item.id}>
+                            {item.item_name_snapshot} x{item.qty}
+                          </li>
+                        ))}
+                      </ul>
+                      {invalidCount > 0 && (
+                        <p className="mt-1 text-amber-600">
+                          {invalidCount} item gak punya produk yang cocok di katalog -- gak ikut dibikinkan ticket.
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label htmlFor="ticket-pengepak" className="text-sm font-medium text-slate-700">
+                  Pengepak
+                </label>
+                <select
+                  id="ticket-pengepak"
+                  value={ticketPengepakId}
+                  onChange={(event) => setTicketPengepakId(event.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+                >
+                  <option value="">Pilih pengepak...</option>
+                  {pengepakList.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <TextInput
+                id="ticket-notes"
+                label="Catatan (opsional)"
+                value={ticketNotes}
+                onChange={(event) => setTicketNotes(event.target.value)}
+              />
+
+              {ticketError && <p className="text-sm text-red-600">{ticketError}</p>}
+
+              <div className="flex gap-2">
+                <Button variant="secondary" className="flex-1" onClick={() => setCreatingTicketFor(null)}>
+                  Batal
+                </Button>
+                <Button className="flex-1" disabled={isCreatingTicket} onClick={handleCreateTicket}>
+                  {isCreatingTicket ? 'Menyimpan...' : 'Simpan'}
+                </Button>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
     </>

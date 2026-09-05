@@ -11,6 +11,7 @@ export const ROUTES = {
   orders: '/orders',
   platforms: '/platforms',
   reports: '/reports',
+  transactionHistory: '/riwayat-transaksi',
   settings: '/settings',
   staff: '/settings/staff',
   storeSettings: '/settings/store',
@@ -38,6 +39,7 @@ export const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.products, label: 'Produk', roles: ['owner'] },
   { path: ROUTES.platforms, label: 'Platform', roles: ['owner'] },
   { path: ROUTES.reports, label: 'Laporan', roles: ['owner'] },
+  { path: ROUTES.transactionHistory, label: 'Riwayat Transaksi', roles: ['owner', 'kasir'] },
   { path: ROUTES.settings, label: 'Pengaturan', roles: ['owner'] },
   { path: ROUTES.notifications, label: 'Notifikasi', roles: ['owner', 'kasir', 'pengepak'] },
 ]

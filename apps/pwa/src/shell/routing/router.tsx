@@ -16,6 +16,7 @@ import { ReportsPage } from '../../pages/reports/ReportsPage'
 import { StaffPage } from '../../pages/staff/StaffPage'
 import { StoreSettingsPage } from '../../pages/store-settings/StoreSettingsPage'
 import { TicketsPage } from '../../pages/tickets/TicketsPage'
+import { TransactionHistoryPage } from '../../pages/transactions/TransactionHistoryPage'
 import { OfflineSyncTestPage } from '../../pages/dev/OfflineSyncTestPage'
 import { IndexRedirect } from './IndexRedirect'
 import { NAV_ITEMS, ROUTES, type AppRole } from './routes'
@@ -62,6 +63,7 @@ export const routeConfig: RouteObject[] = [
       { path: 'orders', element: guarded(ROUTES.orders, <OrdersPage />) },
       { path: 'platforms', element: guarded(ROUTES.platforms, <PlatformsPage />) },
       { path: 'reports', element: guarded(ROUTES.reports, <ReportsPage />) },
+      { path: 'riwayat-transaksi', element: guarded(ROUTES.transactionHistory, <TransactionHistoryPage />) },
       {
         path: 'settings',
         element: guarded(ROUTES.settings, <SettingsLayout />),
