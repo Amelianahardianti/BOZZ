@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import { ApiRequestError } from '../../api/client'
 import { fetchStoreSettings, updateStoreSettings } from '../../api/storeSettings'
 import { compressImageToDataUrl, MAX_LOGO_FILE_BYTES, validateLogoFile } from '../../shared/image'
-import { Button, Card, PageHeader, TextInput } from '../../shell/design-system'
+import { Button, Card, ErrorState, LoadingState, PageHeader, TextInput } from '../../shell/design-system'
 
 interface FormState {
   business_name: string
@@ -87,9 +87,9 @@ export function StoreSettingsPage() {
       <PageHeader title="Pengaturan Toko" description="Nama bisnis, alamat, info yang tampil di struk (FR-FI-04)." />
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{loadError}</p>
+        <ErrorState description={loadError} />
       ) : form ? (
         <Card className="max-w-md">
           <div className="flex flex-col gap-4">

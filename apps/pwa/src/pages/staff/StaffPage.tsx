@@ -8,7 +8,18 @@ import {
   type Staff,
 } from '../../api/staff'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, ConfirmActionModal, EmptyState, PageHeader, TextInput } from '../../shell/design-system'
+import {
+  Button,
+  Card,
+  ConfirmActionModal,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Select,
+  StatusBadge,
+  TextInput,
+} from '../../shell/design-system'
 
 type Role = 'kasir' | 'pengepak'
 
@@ -182,20 +193,10 @@ export function StaffPage() {
                 minLength={6}
               />
             )}
-            <div className="flex flex-col gap-1">
-              <label htmlFor="role" className="text-sm font-medium text-slate-700">
-                Role
-              </label>
-              <select
-                id="role"
-                value={form.role}
-                onChange={(event) => setForm({ ...form, role: event.target.value as Role })}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              >
-                <option value="kasir">Kasir</option>
-                <option value="pengepak">Pengepak</option>
-              </select>
-            </div>
+            <Select id="role" label="Role" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as Role })}>
+              <option value="kasir">Kasir</option>
+              <option value="pengepak">Pengepak</option>
+            </Select>
             <TextInput
               id="phone"
               label="Telepon (opsional)"
@@ -210,11 +211,11 @@ export function StaffPage() {
             )}
 
             <div className="flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setView('list')}>
+              <Button variant="secondary" className="flex-1" onClick={() => setView('list')} disabled={isSubmitting}>
                 Batal
               </Button>
-              <Button className="flex-1" disabled={isSubmitting} onClick={handleSubmit}>
-                {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+              <Button className="flex-1" isLoading={isSubmitting} onClick={handleSubmit}>
+                Simpan
               </Button>
             </div>
           </div>
@@ -232,9 +233,9 @@ export function StaffPage() {
       />
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : staff.length === 0 ? (
         <EmptyState title="Belum ada staf" description='Klik "Tambah Staf" buat bikin akun Kasir/Pengepak pertama.' />
       ) : (
@@ -250,37 +251,22 @@ export function StaffPage() {
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="role-filter" className="text-sm font-medium text-slate-700">
-                  Role
-                </label>
-                <select
-                  id="role-filter"
-                  value={roleFilter}
-                  onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="all">Semua Role</option>
-                  <option value="owner">Owner</option>
-                  <option value="kasir">Kasir</option>
-                  <option value="pengepak">Pengepak</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="status-filter" className="text-sm font-medium text-slate-700">
-                  Status
-                </label>
-                <select
-                  id="status-filter"
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="all">Semua Status</option>
-                  <option value="active">Aktif</option>
-                  <option value="inactive">Nonaktif</option>
-                </select>
-              </div>
+              <Select id="role-filter" label="Role" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as typeof roleFilter)}>
+                <option value="all">Semua Role</option>
+                <option value="owner">Owner</option>
+                <option value="kasir">Kasir</option>
+                <option value="pengepak">Pengepak</option>
+              </Select>
+              <Select
+                id="status-filter"
+                label="Status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
+              >
+                <option value="all">Semua Status</option>
+                <option value="active">Aktif</option>
+                <option value="inactive">Nonaktif</option>
+              </Select>
             </div>
           </Card>
 
@@ -308,13 +294,7 @@ export function StaffPage() {
                       <td className="py-2 text-slate-500">{person.email_or_username}</td>
                       <td className="py-2 capitalize">{person.role}</td>
                       <td className="py-2">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            person.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                          }`}
-                        >
-                          {person.is_active ? 'Aktif' : 'Nonaktif'}
-                        </span>
+                        <StatusBadge label={person.is_active ? 'Aktif' : 'Nonaktif'} tone={person.is_active ? 'success' : 'neutral'} />
                       </td>
                       <td className="py-2">
                         <div className="flex items-center gap-3">

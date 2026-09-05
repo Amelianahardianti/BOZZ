@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform, type Platform, type PlatformName } from '../../api/platforms'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../../shell/design-system'
 
 const PLATFORM_LABEL: Record<PlatformName, string> = {
   shopee: 'Shopee',
@@ -89,9 +89,9 @@ export function PlatformsPage() {
       />
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : platforms.length === 0 ? (
         <EmptyState title="Belum ada platform terdaftar" />
       ) : (
@@ -102,13 +102,10 @@ export function PlatformsPage() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-slate-900">{PLATFORM_LABEL[platform.platform_name]}</p>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        platform.is_connected ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {platform.is_connected ? 'Terhubung' : 'Belum Terhubung'}
-                    </span>
+                    <StatusBadge
+                      label={platform.is_connected ? 'Terhubung' : 'Belum Terhubung'}
+                      tone={platform.is_connected ? 'success' : 'neutral'}
+                    />
                   </div>
                   {platform.is_connected && platform.shop_id_external && (
                     <p className="mt-1 text-xs text-slate-500">Toko: {platform.shop_id_external}</p>

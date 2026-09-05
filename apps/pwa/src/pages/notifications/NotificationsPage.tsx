@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchNotifications, markNotificationRead, type Notification } from '../../api/notifications'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '../../shell/design-system'
 import { notifyNotificationsChanged } from '../../shell/notifications/useUnreadNotifications'
 
 type Filter = 'all' | 'unread'
@@ -109,9 +109,9 @@ export function NotificationsPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : notifications.length === 0 ? (
         <EmptyState
           title={filter === 'unread' ? 'Gak ada notifikasi belum dibaca' : 'Belum ada notifikasi'}

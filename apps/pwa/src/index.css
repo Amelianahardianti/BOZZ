@@ -1,23 +1,63 @@
+/* Google Fonts WAJIB paling atas -- @import CSS harus mendahului aturan
+   lain (spec CSS), termasuk @import "tailwindcss" di bawah ini. Dimuat
+   lewat CSS (bukan <link> di index.html atau paket @fontsource) supaya
+   perubahan ini tetap murni di file ini. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
-/* Design tokens (SRS 4.2 -- "design system" bersama, dipakai semua
-   halaman). Skala warna brand generik, gampang diganti pas ada identitas
-   visual resmi. Warna semantik (sukses/warning/bahaya) sengaja tidak
-   didefinisikan ulang -- Tailwind sudah punya green/amber/red bawaan. */
+/* Design tokens BOZZ (SRS 4.2 -- "design system" bersama, dipakai semua
+   halaman). `brand-*` REBRANDING dari biru generik ke merah BOZZ resmi --
+   nama token TETAP `brand-*` (dipakai luas oleh Button/TextInput/
+   ConfirmActionModal/AppShell/semua page), cuma nilainya yang diganti.
+   Peran tiap step DIPERTAHANKAN sama seperti sebelumnya:
+     600 = warna solid (bg tombol primary, focus-ring, teks link)
+     700 = lebih gelap (hover/active tombol, teks di atas tint 50/100)
+     500 = border fokus input (dipakai di ~20 tempat)
+     50-300 = tint latar/border buat state aktif/selected/hover
+   `secondary-*` (oranye), `tertiary` (krem), dan `ink-*` (teks semantik)
+   BARU ditambahkan, BELUM dipakai component manapun -- disiapkan buat
+   sesi refactor component berikutnya, sengaja tidak memaksa perubahan
+   apapun sekarang. */
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
+  --color-brand-50: #fdecec;
+  --color-brand-100: #fbd5d5;
+  --color-brand-200: #f5a8a8;
+  --color-brand-300: #ec7373;
+  --color-brand-400: #e14747;
+  --color-brand-500: #d00000;
+  --color-brand-600: #d00000;
+  --color-brand-700: #a50000;
+  --color-brand-800: #800000;
+  --color-brand-900: #550000;
+
+  --color-secondary-50: #fff4e6;
+  --color-secondary-100: #ffe8cc;
+  --color-secondary-200: #ffd199;
+  --color-secondary-300: #fdb966;
+  --color-secondary-400: #f9a233;
+  --color-secondary-500: #f48c05;
+  --color-secondary-600: #d97a00;
+  --color-secondary-700: #b36200;
+  --color-secondary-800: #8c4c00;
+  --color-secondary-900: #663700;
+
+  --color-tertiary: #fff4e6;
+
+  --color-ink: #1f1f1f;
+  --color-ink-secondary: #5f6368;
+  --color-ink-muted: #757575;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
+
+/* Konvensi weight (bukan token baru -- Tailwind font-normal/medium/
+   semibold/bold SUDAH mapping persis ke 400/500/600/700):
+     400 (font-normal)   -> body text
+     500 (font-medium)   -> label, navigation
+     600 (font-semibold) -> button, subheading
+     700 (font-bold)     -> heading utama
+   Jangan menambah weight lain di luar 4 ini -- brief BOZZ minta variasi
+   dijaga seminimal mungkin. */
 
 :root {
   color-scheme: light;
@@ -31,6 +71,27 @@ body {
 
 #root {
   min-height: 100svh;
+}
+
+/* Native checkbox/radio (mis. checklist item packing di TicketsPage)
+   ikut merah BOZZ, bukan biru default browser. */
+* {
+  accent-color: var(--color-brand-600);
+}
+
+/* Fallback fokus buat elemen yang belum punya utility fokus eksplisit
+   (link nav, dsb) -- brief accessibility "focus state harus terlihat
+   jelas". Elemen yang SUDAH punya focus-visible utility sendiri
+   (Button, TextInput, dst) otomatis menang karena lebih spesifik;
+   ini cuma jaring pengaman, BUKAN pengganti default browser tanpa
+   gantinya (outline tetap ada, cuma warnanya disamakan ke brand). */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--color-brand-100);
 }
 
 /* Struk (ReceiptView) dicetak buat printer termal 58mm (FR-SI-05).

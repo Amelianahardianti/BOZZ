@@ -135,7 +135,10 @@ describe('OrdersPage', () => {
     render(<OrdersPage />)
     await screen.findByText('SP-991', { exact: false })
 
-    await user.selectOptions(screen.getByRole('combobox', { name: '' }), 'processing')
+    // aria-label ditambah di select ini (ProductsPage-style consistency
+    // audit) -- sebelumnya select ini gak punya accessible name sama
+    // sekali, dicari lewat name: ''. Sekarang dicari lewat label barunya.
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Ubah status order' }), 'processing')
 
     await waitFor(() => expect(mockedUpdateStatus).toHaveBeenCalledWith('order-1', 'processing'))
   })

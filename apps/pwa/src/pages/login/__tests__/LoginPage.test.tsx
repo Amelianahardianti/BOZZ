@@ -49,7 +49,7 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await userEvent.type(screen.getByLabelText('Username / Email'), 'owner')
+    await userEvent.type(screen.getByLabelText('Username'), 'owner')
     await userEvent.type(screen.getByLabelText('Password'), 'owner123')
     await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 
@@ -72,7 +72,7 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await userEvent.type(screen.getByLabelText('Username / Email'), 'budi')
+    await userEvent.type(screen.getByLabelText('Username'), 'budi')
     await userEvent.type(screen.getByLabelText('Password'), 'budi123')
     await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 
@@ -86,11 +86,11 @@ describe('LoginPage', () => {
 
     renderLoginPage()
 
-    await userEvent.type(screen.getByLabelText('Username / Email'), 'owner')
+    await userEvent.type(screen.getByLabelText('Username'), 'owner')
     await userEvent.type(screen.getByLabelText('Password'), 'salah-banget')
     await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Username atau password salah.')
-    expect(screen.getByRole('heading', { name: 'Masuk' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Masuk ke akun Anda' })).toBeInTheDocument()
   })
 })
