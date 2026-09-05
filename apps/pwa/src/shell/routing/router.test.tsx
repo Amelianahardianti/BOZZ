@@ -3,12 +3,19 @@ import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as authApi from '../../api/auth'
+import * as notificationsApi from '../../api/notifications'
 import { AuthProvider } from '../auth/AuthProvider'
 import { STORAGE_KEY, type AuthSession } from '../auth/auth-context'
 import { routeConfig } from './router'
 import { NAV_ITEMS, ROUTES, type AppRole } from './routes'
 
 vi.mock('../../api/auth')
+// AppShell (dirender di setiap rute berlogin) manggil useUnreadNotifications
+// buat badge di nav -- di-mock di sini biar test routing gak diam-diam
+// nembak fetch() beneran ke jaringan.
+vi.mock('../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
+
+const mockedFetchNotifications = vi.mocked(notificationsApi.fetchNotifications)
 
 function sessionFor(role: AppRole): AuthSession {
   return {
@@ -20,6 +27,7 @@ function sessionFor(role: AppRole): AuthSession {
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  mockedFetchNotifications.mockResolvedValue([])
 })
 
 /**
@@ -226,5 +234,28 @@ describe('Alur "kena lempar ke login, balik lagi ke halaman tujuan"', () => {
 
     expect(await screen.findByRole('heading', { name: 'Staf' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe(ROUTES.staff)
+  })
+})
+
+describe('Badge notifikasi belum dibaca di nav (AppShell)', () => {
+  it('ada notifikasi belum dibaca -- badge nampilin jumlahnya di link "Notifikasi"', async () => {
+    mockedFetchNotifications.mockResolvedValue([
+      { id: '1', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
+      { id: '2', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
+    ])
+    renderAt(ROUTES.dashboard, 'owner')
+    await screen.findByRole('heading', { name: 'Dashboard' })
+
+    expect((await screen.findAllByText('2')).length).toBeGreaterThan(0)
+  })
+
+  it('gak ada notifikasi belum dibaca -- gak ada badge sama sekali', async () => {
+    mockedFetchNotifications.mockResolvedValue([])
+    renderAt(ROUTES.dashboard, 'owner')
+    await screen.findByRole('heading', { name: 'Dashboard' })
+
+    // Notifikasi tetap ada sebagai link, cuma tanpa angka badge nempel.
+    expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
+    expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
 })
