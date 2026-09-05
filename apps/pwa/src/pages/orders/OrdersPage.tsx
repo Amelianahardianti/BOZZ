@@ -11,7 +11,20 @@ import { fetchPlatforms, type Platform } from '../../api/platforms'
 import { createTicket } from '../../api/tickets'
 import { fetchStaff, type Staff } from '../../api/staff'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, EmptyState, PageHeader, TextInput } from '../../shell/design-system'
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Modal,
+  PageHeader,
+  Pagination,
+  Select,
+  StatusBadge,
+  TextInput,
+  type BadgeTone,
+} from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
 
 // Order yang masih aktif (belum selesai/batal) yang boleh dibikinkan
@@ -27,14 +40,19 @@ const STATUS_LABEL: Record<ExternalOrderStatus, string> = {
   cancelled: 'Dibatalkan',
 }
 
-const STATUS_BADGE: Record<ExternalOrderStatus, string> = {
-  new: 'bg-blue-100 text-blue-700',
-  processing: 'bg-amber-100 text-amber-700',
-  shipped: 'bg-purple-100 text-purple-700',
-  completed: 'bg-green-100 text-green-700',
-  cancelled: 'bg-slate-100 text-slate-500',
+const STATUS_TONE: Record<ExternalOrderStatus, BadgeTone> = {
+  new: 'info',
+  processing: 'warning',
+  shipped: 'info',
+  completed: 'success',
+  cancelled: 'neutral',
 }
 
+// Label UI "Jenis Pengiriman" -- SlaType/SLA_LABEL (nama variabel & key)
+// SENGAJA tidak diubah, "SLA" tetap konsep/domain internal. Cuma teks
+// yang ditampilkan ke user yang diganti, karena instant/same_day/reguler
+// itu jenis pengiriman yang menentukan batas waktu proses/packing --
+// bukan istilah "SLA" yang teknis buat user non-teknis.
 const SLA_LABEL: Record<SlaType, string> = {
   instant: 'Instant',
   same_day: 'Same Day',
@@ -203,90 +221,73 @@ export function OrdersPage() {
 
   return (
     <>
-      <PageHeader title="Pesanan Masuk" description="Daftar order marketplace, filter platform/status/SLA (FR-OC-05)." />
+      <PageHeader
+        title="Pesanan Masuk"
+        description="Daftar order marketplace, filter platform/status/jenis pengiriman (FR-OC-05)."
+      />
 
       <Card className="mb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="platform-filter" className="text-sm font-medium text-slate-700">
-              Platform
-            </label>
-            <select
-              id="platform-filter"
-              value={filters.platform_id}
-              onChange={(event) => updateFilters({ platform_id: event.target.value })}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">Semua Platform</option>
-              {platforms
-                .filter((p) => p.id)
-                .map((p) => (
-                  <option key={p.platform_name} value={p.id ?? ''}>
-                    {p.platform_name}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="status-filter" className="text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              value={filters.status}
-              onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">Semua Status</option>
-              {(Object.keys(STATUS_LABEL) as ExternalOrderStatus[]).map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_LABEL[status]}
+          <Select
+            id="platform-filter"
+            label="Platform"
+            value={filters.platform_id}
+            onChange={(event) => updateFilters({ platform_id: event.target.value })}
+          >
+            <option value="">Semua Platform</option>
+            {platforms
+              .filter((p) => p.id)
+              .map((p) => (
+                <option key={p.platform_name} value={p.id ?? ''}>
+                  {p.platform_name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="sla-filter" className="text-sm font-medium text-slate-700">
-              SLA
-            </label>
-            <select
-              id="sla-filter"
-              value={filters.sla_type}
-              onChange={(event) => updateFilters({ sla_type: event.target.value as Filters['sla_type'] })}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">Semua SLA</option>
-              {(Object.keys(SLA_LABEL) as SlaType[]).map((sla) => (
-                <option key={sla} value={sla}>
-                  {SLA_LABEL[sla]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="page-size" className="text-sm font-medium text-slate-700">
-              Per Halaman
-            </label>
-            <select
-              id="page-size"
-              value={pageSize}
-              onChange={(event) => updatePageSize(Number(event.target.value) as PageSize)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
+          </Select>
+          <Select
+            id="status-filter"
+            label="Status"
+            value={filters.status}
+            onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}
+          >
+            <option value="">Semua Status</option>
+            {(Object.keys(STATUS_LABEL) as ExternalOrderStatus[]).map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABEL[status]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            id="sla-filter"
+            label="Jenis Pengiriman"
+            value={filters.sla_type}
+            onChange={(event) => updateFilters({ sla_type: event.target.value as Filters['sla_type'] })}
+          >
+            <option value="">Semua Jenis Pengiriman</option>
+            {(Object.keys(SLA_LABEL) as SlaType[]).map((sla) => (
+              <option key={sla} value={sla}>
+                {SLA_LABEL[sla]}
+              </option>
+            ))}
+          </Select>
+          <Select
+            id="page-size"
+            label="Per Halaman"
+            value={pageSize}
+            onChange={(event) => updatePageSize(Number(event.target.value) as PageSize)}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </Select>
         </div>
       </Card>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : orders.length === 0 ? (
         <EmptyState title="Gak ada order" description="Belum ada order marketplace yang cocok sama filter ini." />
       ) : (
@@ -304,9 +305,7 @@ export function OrdersPage() {
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[order.status]}`}>
-                    {STATUS_LABEL[order.status]}
-                  </span>
+                  <StatusBadge label={STATUS_LABEL[order.status]} tone={STATUS_TONE[order.status]} />
                   <span className={`text-xs ${isOverdue(order) ? 'font-medium text-red-600' : 'text-slate-400'}`}>
                     {SLA_LABEL[order.sla_type]}
                     {order.sla_deadline && ` -- ${new Date(order.sla_deadline).toLocaleString('id-ID')}`}
@@ -340,6 +339,7 @@ export function OrdersPage() {
                     Total: {order.total_amount !== null ? formatRupiah(order.total_amount) : '-'}
                   </p>
                   <select
+                    aria-label="Ubah status order"
                     value={order.status}
                     disabled={updatingOrderId === order.id}
                     onChange={(event) => handleUpdateStatus(order.id, event.target.value as ExternalOrderStatus)}
@@ -367,92 +367,73 @@ export function OrdersPage() {
       )}
 
       {!isLoading && !loadError && (orders.length > 0 || page > 1) && (
-        <div className="mt-4 flex items-center justify-between">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Sebelumnya
-          </Button>
-          <p className="text-sm text-slate-500">Halaman {page}</p>
-          <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-            Berikutnya
-          </Button>
-        </div>
+        <Pagination page={page} hasNextPage={hasNextPage} onPrevious={() => setPage((p) => p - 1)} onNext={() => setPage((p) => p + 1)} />
       )}
 
       {creatingTicketFor && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-        >
-          <Card className="w-full max-w-md">
-            <div className="flex flex-col gap-4">
-              <h2 className="text-base font-semibold text-slate-900">
-                Buat Ticket -- {creatingTicketFor.external_order_id}
-              </h2>
+        <Modal className="max-w-md" labelledBy="create-ticket-title">
+          <div className="flex flex-col gap-4">
+            <h2 id="create-ticket-title" className="text-base font-semibold text-slate-900">
+              Buat Ticket -- {creatingTicketFor.external_order_id}
+            </h2>
 
-              <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-                {(() => {
-                  const validItems = creatingTicketFor.items.filter((item) => item.product_id)
-                  const invalidCount = creatingTicketFor.items.length - validItems.length
-                  return (
-                    <>
-                      <p className="font-medium">Item ({validItems.length}):</p>
-                      <ul className="list-disc pl-4">
-                        {validItems.map((item) => (
-                          <li key={item.id}>
-                            {item.item_name_snapshot} x{item.qty}
-                          </li>
-                        ))}
-                      </ul>
-                      {invalidCount > 0 && (
-                        <p className="mt-1 text-amber-600">
-                          {invalidCount} item gak punya produk yang cocok di katalog -- gak ikut dibikinkan ticket.
-                        </p>
-                      )}
-                    </>
-                  )
-                })()}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label htmlFor="ticket-pengepak" className="text-sm font-medium text-slate-700">
-                  Pengepak
-                </label>
-                <select
-                  id="ticket-pengepak"
-                  value={ticketPengepakId}
-                  onChange={(event) => setTicketPengepakId(event.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="">Pilih pengepak...</option>
-                  {pengepakList.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <TextInput
-                id="ticket-notes"
-                label="Catatan (opsional)"
-                value={ticketNotes}
-                onChange={(event) => setTicketNotes(event.target.value)}
-              />
-
-              {ticketError && <p className="text-sm text-red-600">{ticketError}</p>}
-
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={() => setCreatingTicketFor(null)}>
-                  Batal
-                </Button>
-                <Button className="flex-1" disabled={isCreatingTicket} onClick={handleCreateTicket}>
-                  {isCreatingTicket ? 'Menyimpan...' : 'Simpan'}
-                </Button>
-              </div>
+            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+              {(() => {
+                const validItems = creatingTicketFor.items.filter((item) => item.product_id)
+                const invalidCount = creatingTicketFor.items.length - validItems.length
+                return (
+                  <>
+                    <p className="font-medium">Item ({validItems.length}):</p>
+                    <ul className="list-disc pl-4">
+                      {validItems.map((item) => (
+                        <li key={item.id}>
+                          {item.item_name_snapshot} x{item.qty}
+                        </li>
+                      ))}
+                    </ul>
+                    {invalidCount > 0 && (
+                      <p className="mt-1 text-amber-600">
+                        {invalidCount} item gak punya produk yang cocok di katalog -- gak ikut dibikinkan ticket.
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
             </div>
-          </Card>
-        </div>
+
+            <Select
+              id="ticket-pengepak"
+              label="Pengepak"
+              value={ticketPengepakId}
+              onChange={(event) => setTicketPengepakId(event.target.value)}
+            >
+              <option value="">Pilih pengepak...</option>
+              {pengepakList.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+
+            <TextInput
+              id="ticket-notes"
+              label="Catatan (opsional)"
+              value={ticketNotes}
+              onChange={(event) => setTicketNotes(event.target.value)}
+            />
+
+            {ticketError && <p className="text-sm text-red-600">{ticketError}</p>}
+
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={() => setCreatingTicketFor(null)} disabled={isCreatingTicket}>
+                Batal
+              </Button>
+              <Button className="flex-1" isLoading={isCreatingTicket} onClick={handleCreateTicket}>
+                Simpan
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   )

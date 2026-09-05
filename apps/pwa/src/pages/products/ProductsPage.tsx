@@ -16,7 +16,13 @@ import {
   Card,
   ConfirmActionModal,
   EmptyState,
+  ErrorState,
+  LoadingState,
+  Modal,
   PageHeader,
+  Pagination,
+  Select,
+  StatusBadge,
   TextInput,
 } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
@@ -330,24 +336,19 @@ export function ProductsPage() {
               value={form.sku}
               onChange={(event) => setForm({ ...form, sku: event.target.value })}
             />
-            <div className="flex flex-col gap-1">
-              <label htmlFor="category" className="text-sm font-medium text-slate-700">
-                Kategori (opsional)
-              </label>
-              <select
-                id="category"
-                value={form.category_id}
-                onChange={(event) => setForm({ ...form, category_id: event.target.value })}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-              >
-                <option value="">Tanpa Kategori</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              id="category"
+              label="Kategori (opsional)"
+              value={form.category_id}
+              onChange={(event) => setForm({ ...form, category_id: event.target.value })}
+            >
+              <option value="">Tanpa Kategori</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
             <TextInput
               id="price"
               label="Harga"
@@ -391,11 +392,11 @@ export function ProductsPage() {
             )}
 
             <div className="flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setView('list')}>
+              <Button variant="secondary" className="flex-1" onClick={() => setView('list')} disabled={isSubmitting}>
                 Batal
               </Button>
-              <Button className="flex-1" disabled={isSubmitting} onClick={handleSubmit}>
-                {isSubmitting ? 'Menyimpan...' : 'Simpan'}
+              <Button className="flex-1" isLoading={isSubmitting} onClick={handleSubmit}>
+                Simpan
               </Button>
             </div>
           </div>
@@ -423,56 +424,36 @@ export function ProductsPage() {
               onChange={(event) => updateSearch(event.target.value)}
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="category-filter" className="text-sm font-medium text-slate-700">
-              Kategori
-            </label>
-            <select
-              id="category-filter"
-              value={categoryFilter}
-              onChange={(event) => updateCategoryFilter(event.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">Semua Kategori</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="status-filter" className="text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(event) => updateStatusFilter(event.target.value as StatusFilter)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="all">Semua Status</option>
-              <option value="active">Aktif</option>
-              <option value="inactive">Nonaktif</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="page-size" className="text-sm font-medium text-slate-700">
-              Per Halaman
-            </label>
-            <select
-              id="page-size"
-              value={pageSize}
-              onChange={(event) => updatePageSize(Number(event.target.value) as PageSize)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select id="category-filter" label="Kategori" value={categoryFilter} onChange={(event) => updateCategoryFilter(event.target.value)}>
+            <option value="">Semua Kategori</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+          <Select
+            id="status-filter"
+            label="Status"
+            value={statusFilter}
+            onChange={(event) => updateStatusFilter(event.target.value as StatusFilter)}
+          >
+            <option value="all">Semua Status</option>
+            <option value="active">Aktif</option>
+            <option value="inactive">Nonaktif</option>
+          </Select>
+          <Select
+            id="page-size"
+            label="Per Halaman"
+            value={pageSize}
+            onChange={(event) => updatePageSize(Number(event.target.value) as PageSize)}
+          >
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </Select>
         </div>
       </Card>
 
@@ -487,8 +468,8 @@ export function ProductsPage() {
               className="text-sm"
               disabled={isImporting}
             />
-            <Button variant="secondary" onClick={handleImportFile} disabled={isImporting}>
-              {isImporting ? 'Memproses...' : 'Import'}
+            <Button variant="secondary" isLoading={isImporting} onClick={handleImportFile}>
+              Import
             </Button>
           </div>
           {importError && <p className="text-sm text-red-600">{importError}</p>}
@@ -518,9 +499,9 @@ export function ProductsPage() {
       </Card>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : products.length === 0 ? (
         <EmptyState title="Belum ada produk" description='Klik "Tambah Produk" atau import file .xlsx buat mulai.' />
       ) : (
@@ -552,13 +533,7 @@ export function ProductsPage() {
                     {product.unit}
                   </td>
                   <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        product.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {product.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
+                    <StatusBadge label={product.is_active ? 'Aktif' : 'Nonaktif'} tone={product.is_active ? 'success' : 'neutral'} />
                   </td>
                   <td className="py-2">
                     <div className="flex items-center gap-3">
@@ -603,63 +578,50 @@ export function ProductsPage() {
       )}
 
       {!isLoading && !loadError && (products.length > 0 || page > 1) && (
-        <div className="mt-4 flex items-center justify-between">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Sebelumnya
-          </Button>
-          <p className="text-sm text-slate-500">
-            Halaman {page} dari {Math.max(1, Math.ceil(total / pageSize))}
-          </p>
-          <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-            Berikutnya
-          </Button>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={Math.max(1, Math.ceil(total / pageSize))}
+          hasNextPage={hasNextPage}
+          onPrevious={() => setPage((p) => p - 1)}
+          onNext={() => setPage((p) => p + 1)}
+        />
       )}
 
       {adjustingProduct && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-        >
-          <Card className="w-full max-w-sm">
-            <div className="flex flex-col gap-4">
-              <h2 className="text-base font-semibold text-slate-900">Sesuaikan Stok -- {adjustingProduct.name}</h2>
-              <p className="text-sm text-slate-500">Stok saat ini: {adjustingProduct.stock_qty}</p>
-              <TextInput
-                id="adjust-qty"
-                label="Perubahan (+/-)"
-                type="number"
-                placeholder="mis. 10 atau -5"
-                value={adjustQty}
-                onChange={(event) => setAdjustQty(event.target.value)}
-              />
-              <div className="flex flex-col gap-1">
-                <label htmlFor="adjust-reason" className="text-sm font-medium text-slate-700">
-                  Alasan
-                </label>
-                <select
-                  id="adjust-reason"
-                  value={adjustReason}
-                  onChange={(event) => setAdjustReason(event.target.value as 'manual_adjustment' | 'restock')}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="manual_adjustment">Penyesuaian Manual</option>
-                  <option value="restock">Restock</option>
-                </select>
-              </div>
-              {adjustError && <p className="text-sm text-red-600">{adjustError}</p>}
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={() => setAdjustingProduct(null)}>
-                  Batal
-                </Button>
-                <Button className="flex-1" disabled={isAdjusting} onClick={handleAdjustSubmit}>
-                  {isAdjusting ? 'Menyimpan...' : 'Simpan'}
-                </Button>
-              </div>
+        <Modal className="max-w-sm" labelledBy="adjust-stock-title">
+          <div className="flex flex-col gap-4">
+            <h2 id="adjust-stock-title" className="text-base font-semibold text-slate-900">
+              Sesuaikan Stok -- {adjustingProduct.name}
+            </h2>
+            <p className="text-sm text-slate-500">Stok saat ini: {adjustingProduct.stock_qty}</p>
+            <TextInput
+              id="adjust-qty"
+              label="Perubahan (+/-)"
+              type="number"
+              placeholder="mis. 10 atau -5"
+              value={adjustQty}
+              onChange={(event) => setAdjustQty(event.target.value)}
+            />
+            <Select
+              id="adjust-reason"
+              label="Alasan"
+              value={adjustReason}
+              onChange={(event) => setAdjustReason(event.target.value as 'manual_adjustment' | 'restock')}
+            >
+              <option value="manual_adjustment">Penyesuaian Manual</option>
+              <option value="restock">Restock</option>
+            </Select>
+            {adjustError && <p className="text-sm text-red-600">{adjustError}</p>}
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={() => setAdjustingProduct(null)} disabled={isAdjusting}>
+                Batal
+              </Button>
+              <Button className="flex-1" isLoading={isAdjusting} onClick={handleAdjustSubmit}>
+                Simpan
+              </Button>
             </div>
-          </Card>
-        </div>
+          </div>
+        </Modal>
       )}
 
       {pendingDeactivate && (

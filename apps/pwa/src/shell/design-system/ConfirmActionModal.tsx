@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from './Button'
-import { Card } from './Card'
+import { Modal } from './Modal'
+import { TextInput } from './TextInput'
 
 interface ConfirmActionModalProps {
   title: string
@@ -33,50 +34,39 @@ export function ConfirmActionModal({
   const isMatch = typed.trim().toLowerCase() === confirmWord.trim().toLowerCase()
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-action-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-    >
-      <Card className="w-full max-w-sm">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h2 id="confirm-action-title" className="text-base font-semibold text-slate-900">
-              {title}
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">{description}</p>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label htmlFor="confirm-action-input" className="text-sm font-medium text-slate-700">
-              Ketik "{confirmWord}" buat konfirmasi
-            </label>
-            <input
-              id="confirm-action-input"
-              autoFocus
-              autoComplete="off"
-              value={typed}
-              onChange={(event) => setTyped(event.target.value)}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={isSubmitting}>
-              Batal
-            </Button>
-            <Button
-              variant={variant}
-              className="flex-1"
-              onClick={onConfirm}
-              disabled={!isMatch || isSubmitting}
-            >
-              {isSubmitting ? 'Memproses...' : confirmLabel}
-            </Button>
-          </div>
+    <Modal className="max-w-sm" labelledBy="confirm-action-title">
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 id="confirm-action-title" className="text-base font-semibold text-slate-900">
+            {title}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">{description}</p>
         </div>
-      </Card>
-    </div>
+
+        <TextInput
+          id="confirm-action-input"
+          label={`Ketik "${confirmWord}" buat konfirmasi`}
+          autoFocus
+          autoComplete="off"
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+        />
+
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={onCancel} disabled={isSubmitting}>
+            Batal
+          </Button>
+          <Button
+            variant={variant}
+            className="flex-1"
+            onClick={onConfirm}
+            disabled={!isMatch}
+            isLoading={isSubmitting}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }

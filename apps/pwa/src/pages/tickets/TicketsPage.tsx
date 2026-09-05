@@ -10,7 +10,19 @@ import {
 import { fetchStaff, type Staff } from '../../api/staff'
 import { ApiRequestError } from '../../api/client'
 import { useAuth } from '../../shell/auth/useAuth'
-import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  Modal,
+  PageHeader,
+  Pagination,
+  Select,
+  StatusBadge,
+  type BadgeTone,
+} from '../../shell/design-system'
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   unassigned: 'Belum Ditugaskan',
@@ -20,12 +32,12 @@ const STATUS_LABEL: Record<TicketStatus, string> = {
   handed_over: 'Diserahkan',
 }
 
-const STATUS_BADGE: Record<TicketStatus, string> = {
-  unassigned: 'bg-slate-100 text-slate-500',
-  assigned: 'bg-blue-100 text-blue-700',
-  packing: 'bg-amber-100 text-amber-700',
-  packed: 'bg-purple-100 text-purple-700',
-  handed_over: 'bg-green-100 text-green-700',
+const STATUS_TONE: Record<TicketStatus, BadgeTone> = {
+  unassigned: 'neutral',
+  assigned: 'info',
+  packing: 'warning',
+  packed: 'info',
+  handed_over: 'success',
 }
 
 const NEXT_STATUS: Partial<Record<TicketStatus, TicketStatus>> = {
@@ -88,9 +100,9 @@ function MyTicketsView() {
       <PageHeader title="Ticket Saya" description="Ticket packing yang ditugaskan ke kamu (FR-SI-11)." />
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : tickets.length === 0 ? (
         <EmptyState title="Gak ada ticket" description="Belum ada ticket packing yang ditugaskan ke kamu." />
       ) : (
@@ -105,9 +117,7 @@ function MyTicketsView() {
                     <p className="font-semibold text-slate-900">{ticket.external_order_id}</p>
                     {ticket.notes && <p className="mt-0.5 text-xs text-slate-400">{ticket.notes}</p>}
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[ticket.status]}`}>
-                    {STATUS_LABEL[ticket.status]}
-                  </span>
+                  <StatusBadge label={STATUS_LABEL[ticket.status]} tone={STATUS_TONE[ticket.status]} />
                 </div>
 
                 <ul className="divide-y divide-slate-100">
@@ -230,34 +240,29 @@ function OwnerTicketBoard() {
 
       <Card className="mb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="ticket-status-filter" className="text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              id="ticket-status-filter"
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as StatusFilter)
-                setPage(1)
-              }}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-            >
-              <option value="">Semua Status</option>
-              {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_LABEL[status]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            id="ticket-status-filter"
+            label="Status"
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as StatusFilter)
+              setPage(1)
+            }}
+          >
+            <option value="">Semua Status</option>
+            {(Object.keys(STATUS_LABEL) as TicketStatus[]).map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABEL[status]}
+              </option>
+            ))}
+          </Select>
         </div>
       </Card>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : tickets.length === 0 ? (
         <EmptyState
           title="Gak ada ticket"
@@ -283,9 +288,7 @@ function OwnerTicketBoard() {
                     {ticket.notes && <p className="text-xs text-slate-400">{ticket.notes}</p>}
                   </td>
                   <td className="py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[ticket.status]}`}>
-                      {STATUS_LABEL[ticket.status]}
-                    </span>
+                    <StatusBadge label={STATUS_LABEL[ticket.status]} tone={STATUS_TONE[ticket.status]} />
                   </td>
                   <td className="py-2 text-slate-500">{staffName(ticket.assigned_to_user_id)}</td>
                   <td className="py-2 text-slate-500">{ticket.items.length}</td>
@@ -302,55 +305,38 @@ function OwnerTicketBoard() {
       )}
 
       {!isLoading && !loadError && (tickets.length > 0 || page > 1) && (
-        <div className="mt-4 flex items-center justify-between">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Sebelumnya
-          </Button>
-          <p className="text-sm text-slate-500">Halaman {page}</p>
-          <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-            Berikutnya
-          </Button>
-        </div>
+        <Pagination page={page} hasNextPage={hasNextPage} onPrevious={() => setPage((p) => p - 1)} onNext={() => setPage((p) => p + 1)} />
       )}
 
       {assigningTicketId && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-        >
-          <Card className="w-full max-w-sm">
-            <div className="flex flex-col gap-4">
-              <h2 className="text-base font-semibold text-slate-900">Tugaskan Ticket</h2>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="assign-pengepak" className="text-sm font-medium text-slate-700">
-                  Pengepak
-                </label>
-                <select
-                  id="assign-pengepak"
-                  value={assignSelection}
-                  onChange={(event) => setAssignSelection(event.target.value)}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                >
-                  <option value="">Pilih pengepak...</option>
-                  {pengepakOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={() => setAssigningTicketId(null)}>
-                  Batal
-                </Button>
-                <Button className="flex-1" disabled={!assignSelection || isAssigning} onClick={submitAssign}>
-                  {isAssigning ? 'Menyimpan...' : 'Simpan'}
-                </Button>
-              </div>
+        <Modal className="max-w-sm" labelledBy="assign-ticket-title">
+          <div className="flex flex-col gap-4">
+            <h2 id="assign-ticket-title" className="text-base font-semibold text-slate-900">
+              Tugaskan Ticket
+            </h2>
+            <Select
+              id="assign-pengepak"
+              label="Pengepak"
+              value={assignSelection}
+              onChange={(event) => setAssignSelection(event.target.value)}
+            >
+              <option value="">Pilih pengepak...</option>
+              {pengepakOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={() => setAssigningTicketId(null)} disabled={isAssigning}>
+                Batal
+              </Button>
+              <Button className="flex-1" disabled={!assignSelection} isLoading={isAssigning} onClick={submitAssign}>
+                Simpan
+              </Button>
             </div>
-          </Card>
-        </div>
+          </div>
+        </Modal>
       )}
     </>
   )

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { fetchTransaction, fetchTransactions, type PaymentMethod, type Transaction } from '../../api/transactions'
 import { ApiRequestError } from '../../api/client'
 import { getCachedStoreSettings } from '../../shell/offline/storeSettingsCache'
-import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import { Card, EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
 import { ReceiptView, type CompletedCheckout } from '../kasir/ReceiptView'
 
@@ -102,9 +102,9 @@ export function TransactionHistoryPage() {
       <PageHeader title="Riwayat Transaksi" description="Daftar transaksi POS, buka ulang struknya buat dicetak lagi." />
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Memuat...</p>
+        <LoadingState />
       ) : loadError ? (
-        <EmptyState title="Gagal memuat data" description={loadError} />
+        <ErrorState description={loadError} />
       ) : transactions.length === 0 ? (
         <EmptyState title="Belum ada transaksi" description="Transaksi POS yang sudah selesai akan muncul di sini." />
       ) : (
@@ -128,15 +128,10 @@ export function TransactionHistoryPage() {
                   <td className="py-2">{PAYMENT_LABEL[transaction.payment_method]}</td>
                   <td className="py-2 font-medium text-slate-900">{formatRupiah(transaction.total_amount)}</td>
                   <td className="py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        transaction.status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {transaction.status === 'completed' ? 'Selesai' : 'Dibatalkan'}
-                    </span>
+                    <StatusBadge
+                      label={transaction.status === 'completed' ? 'Selesai' : 'Dibatalkan'}
+                      tone={transaction.status === 'completed' ? 'success' : 'neutral'}
+                    />
                   </td>
                   <td className="py-2">
                     <button
@@ -156,17 +151,13 @@ export function TransactionHistoryPage() {
       )}
 
       {!isLoading && !loadError && (transactions.length > 0 || page > 1) && (
-        <div className="mt-4 flex items-center justify-between">
-          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Sebelumnya
-          </Button>
-          <p className="text-sm text-slate-500">
-            Halaman {page} dari {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-          </p>
-          <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
-            Berikutnya
-          </Button>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+          hasNextPage={hasNextPage}
+          onPrevious={() => setPage((p) => p - 1)}
+          onNext={() => setPage((p) => p + 1)}
+        />
       )}
     </>
   )
