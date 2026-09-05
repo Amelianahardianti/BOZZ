@@ -15,7 +15,7 @@ export function TextInput({ label, id, error, className = '', ...rest }: TextInp
       </label>
       <input
         id={id}
-        className={`rounded-lg border px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
+        className={`rounded-lg border px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus-visible:outline focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
           error ? 'border-red-400' : 'border-slate-300'
         } ${className}`}
         {...rest}
