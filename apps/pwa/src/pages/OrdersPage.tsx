@@ -9,7 +9,7 @@ import {
 } from '../api/orders'
 import { fetchPlatforms, type Platform } from '../api/platforms'
 import { ApiRequestError } from '../api/client'
-import { Card, EmptyState, PageHeader } from '../shell/design-system'
+import { Button, Card, EmptyState, PageHeader } from '../shell/design-system'
 import { formatRupiah } from '../shell/currency'
 
 const STATUS_LABEL: Record<ExternalOrderStatus, string> = {
@@ -42,6 +42,9 @@ type Filters = {
 
 const EMPTY_FILTERS: Filters = { platform_id: '', status: '', sla_type: '' }
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const
+type PageSize = (typeof PAGE_SIZE_OPTIONS)[number]
+
 // Order dianggap kelewat SLA cuma kalau statusnya masih aktif -- yang
 // udah selesai/batal gak perlu ditandai lewat lagi, kejar-kejaran waktu
 // itu udah gak relevan buat mereka.
@@ -58,19 +61,37 @@ export function OrdersPage() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
 
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<PageSize>(10)
+  // Backend GET /orders balikin array polos (gak ada `total`), jadi
+  // "ada halaman berikutnya apa nggak" ditebak dari jumlah hasil: kalau
+  // pas ngembaliin sejumlah pageSize, KEMUNGKINAN masih ada lagi.
+  const [hasNextPage, setHasNextPage] = useState(false)
+
   const platformName = (platformId: string) => platforms.find((p) => p.id === platformId)?.platform_name ?? platformId
+
+  function updateFilters(changes: Partial<Filters>) {
+    setFilters({ ...filters, ...changes })
+    setPage(1)
+  }
+
+  function updatePageSize(newPageSize: PageSize) {
+    setPageSize(newPageSize)
+    setPage(1)
+  }
 
   // SATU chain promise, termasuk reset isLoading/loadError-nya lewat
   // .then() (bukan dipanggil sinkron di badan efek) -- biar gak kena
   // react-hooks/set-state-in-effect, sama pola-nya kayak
-  // NotificationsPage.tsx. Efek ini jalan ulang tiap filter ganti.
+  // NotificationsPage.tsx. Efek ini jalan ulang tiap filter/halaman/
+  // ukuran halaman ganti.
   //
   // GET /orders (list) SENGAJA gak nyertain item per order (SRS 10.5,
   // biar ringan) -- karena tampilan sekarang butuh item-nya langsung
   // kelihatan di tiap kartu (bukan diklik dulu), detail tiap order
-  // (yang ada item-nya) ikut ditarik sekalian lewat Promise.all. Limit
-  // list dikecilin ke 50 (dari 100) biar jumlah request paralel ini
-  // gak kebablasan buat halaman admin kayak gini.
+  // (yang ada item-nya) ikut ditarik sekalian lewat Promise.all. Dengan
+  // pagination, jumlah request paralel ini kebatasin ke pageSize (maks
+  // 50), gak lagi ratusan sekaligus kayak sebelum ada pagination.
   useEffect(() => {
     Promise.resolve()
       .then(() => {
@@ -81,13 +102,15 @@ export function OrdersPage() {
             platform_id: filters.platform_id || undefined,
             status: filters.status || undefined,
             sla_type: filters.sla_type || undefined,
-            limit: 50,
+            page,
+            limit: pageSize,
           }),
           fetchPlatforms(),
         ])
       })
       .then(async ([orderList, platformList]) => {
         setPlatforms(platformList)
+        setHasNextPage(orderList.length === pageSize)
         const details = await Promise.all(orderList.map((order) => fetchOrderDetail(order.id)))
         setOrders(details)
       })
@@ -95,7 +118,7 @@ export function OrdersPage() {
         setLoadError(err instanceof ApiRequestError ? err.message : 'Gagal memuat daftar order.')
       })
       .finally(() => setIsLoading(false))
-  }, [filters])
+  }, [filters, page, pageSize])
 
   async function handleUpdateStatus(orderId: string, newStatus: ExternalOrderStatus) {
     setUpdatingOrderId(orderId)
@@ -122,7 +145,7 @@ export function OrdersPage() {
             <select
               id="platform-filter"
               value={filters.platform_id}
-              onChange={(event) => setFilters({ ...filters, platform_id: event.target.value })}
+              onChange={(event) => updateFilters({ platform_id: event.target.value })}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
             >
               <option value="">Semua Platform</option>
@@ -142,7 +165,7 @@ export function OrdersPage() {
             <select
               id="status-filter"
               value={filters.status}
-              onChange={(event) => setFilters({ ...filters, status: event.target.value as Filters['status'] })}
+              onChange={(event) => updateFilters({ status: event.target.value as Filters['status'] })}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
             >
               <option value="">Semua Status</option>
@@ -160,13 +183,30 @@ export function OrdersPage() {
             <select
               id="sla-filter"
               value={filters.sla_type}
-              onChange={(event) => setFilters({ ...filters, sla_type: event.target.value as Filters['sla_type'] })}
+              onChange={(event) => updateFilters({ sla_type: event.target.value as Filters['sla_type'] })}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
             >
               <option value="">Semua SLA</option>
               {(Object.keys(SLA_LABEL) as SlaType[]).map((sla) => (
                 <option key={sla} value={sla}>
                   {SLA_LABEL[sla]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="page-size" className="text-sm font-medium text-slate-700">
+              Per Halaman
+            </label>
+            <select
+              id="page-size"
+              value={pageSize}
+              onChange={(event) => updatePageSize(Number(event.target.value) as PageSize)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
                 </option>
               ))}
             </select>
@@ -246,6 +286,18 @@ export function OrdersPage() {
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {!isLoading && !loadError && (orders.length > 0 || page > 1) && (
+        <div className="mt-4 flex items-center justify-between">
+          <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Sebelumnya
+          </Button>
+          <p className="text-sm text-slate-500">Halaman {page}</p>
+          <Button variant="secondary" disabled={!hasNextPage} onClick={() => setPage((p) => p + 1)}>
+            Berikutnya
+          </Button>
         </div>
       )}
     </>

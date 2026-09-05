@@ -162,4 +162,62 @@ describe('OrdersPage', () => {
     expect(screen.getByText('SP-991', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('SP-992', { exact: false })).toBeInTheDocument()
   })
+
+  describe('pagination', () => {
+    it('default: page 1, limit 10; tombol Sebelumnya kedisable di halaman 1', async () => {
+      const order = buildOrder()
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      render(<OrdersPage />)
+      await screen.findByText('SP-991', { exact: false })
+
+      expect(mockedFetchOrders).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 10 }))
+      expect(screen.getByRole('button', { name: 'Sebelumnya' })).toBeDisabled()
+    })
+
+    it('hasil sepenuh pageSize -- tombol Berikutnya aktif, klik pindah ke page 2', async () => {
+      const user = userEvent.setup()
+      // 10 hasil == pageSize default (10) -- artinya KEMUNGKINAN masih ada halaman berikutnya.
+      mockedFetchOrders.mockResolvedValue(
+        Array.from({ length: 10 }, (_, i) => buildOrder({ id: `o${i}`, external_order_id: `SP-${i}` })),
+      )
+      mockedFetchOrderDetail.mockImplementation((id) => Promise.resolve(buildOrder({ id, external_order_id: id })))
+      render(<OrdersPage />)
+      await screen.findByText('Halaman 1')
+      expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
+
+      await user.click(screen.getByRole('button', { name: 'Berikutnya' }))
+
+      await waitFor(() => expect(mockedFetchOrders).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })))
+      expect(await screen.findByText('Halaman 2')).toBeInTheDocument()
+    })
+
+    it('hasil kurang dari pageSize -- tombol Berikutnya kedisable (dianggap halaman terakhir)', async () => {
+      const order = buildOrder()
+      mockedFetchOrders.mockResolvedValue([order]) // 1 hasil < pageSize (10)
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      render(<OrdersPage />)
+
+      await screen.findByText('SP-991', { exact: false })
+      expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeDisabled()
+    })
+
+    it('ganti filter -- balik lagi ke halaman 1', async () => {
+      const user = userEvent.setup()
+      const order = buildOrder()
+      mockedFetchOrders.mockResolvedValue(Array.from({ length: 10 }, (_, i) => buildOrder({ id: `o${i}`, external_order_id: `SP-${i}` })))
+      mockedFetchOrderDetail.mockImplementation((id) => Promise.resolve(buildOrder({ id, external_order_id: id })))
+      render(<OrdersPage />)
+      await screen.findByText('Halaman 1')
+
+      await user.click(screen.getByRole('button', { name: 'Berikutnya' }))
+      await screen.findByText('Halaman 2')
+
+      mockedFetchOrders.mockResolvedValue([order])
+      await user.selectOptions(screen.getByLabelText('Status'), 'processing')
+
+      expect(await screen.findByText('Halaman 1')).toBeInTheDocument()
+      await waitFor(() => expect(mockedFetchOrders).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, status: 'processing' })))
+    })
+  })
 })
