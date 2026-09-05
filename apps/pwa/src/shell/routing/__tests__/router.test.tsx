@@ -232,8 +232,8 @@ describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
   })
 })
 
-describe('Alur "kena lempar ke login, balik lagi ke halaman tujuan"', () => {
-  it('coba akses /staff tanpa login -> login -> balik ke /staff (bukan ke halaman default)', async () => {
+describe('Alur "kena lempar ke login, abis login SELALU ke default role (bukan balik ke halaman tujuan)"', () => {
+  it('coba akses /staff tanpa login -> login -> ke Dashboard (default role Owner), BUKAN balik ke /staff', async () => {
     vi.mocked(authApi.login).mockResolvedValue(sessionFor('owner'))
 
     const router = renderAt(ROUTES.staff)
@@ -243,8 +243,8 @@ describe('Alur "kena lempar ke login, balik lagi ke halaman tujuan"', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'owner123')
     await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 
-    expect(await screen.findByRole('heading', { name: 'Staf' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.staff)
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(ROUTES.dashboard)
   })
 })
 

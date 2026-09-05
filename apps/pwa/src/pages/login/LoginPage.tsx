@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { FiEye, FiEyeOff } from 'react-icons/fi'
 import { login } from '../../api/auth'
 import { ApiRequestError } from '../../api/client'
@@ -10,13 +10,17 @@ import { getCachedStoreSettings } from '../../shell/offline/storeSettingsCache'
 import { getDefaultRouteForRole } from '../../shell/routing/routes'
 
 /**
- * FR-FI-01. RequireAuth (router.tsx) ngelempar user belum-login ke
- * sini lewat state.from -- kalau ada, balik ke situ abis berhasil
- * login; kalau nggak, ke halaman default rolenya.
+ * FR-FI-01. Abis login sukses, SELALU ke halaman default rolenya
+ * (getDefaultRouteForRole) -- BUKAN balik ke `state.from` yang dikirim
+ * RequireAuth (router.tsx) pas ngelempar user belum-login ke sini.
+ * Dulu `from` dipakai buat balikin user ke halaman yang tadinya mau
+ * diakses, tapi itu juga kepakai kalau sesi mati sendiri (401/logout)
+ * pas user lagi buka halaman tertentu -- abis login ulang, dia
+ * ketimpa ke halaman lama itu lagi, bukan ke default rolenya. Login
+ * normal dari LoginPage sekarang konsisten SELALU ke default role.
  */
 export function LoginPage() {
   const { session, login: setSession } = useAuth()
-  const location = useLocation()
   // Baca dari cache offline (Dexie) langsung -- BUKAN fetchStoreSettings(),
   // itu butuh token dan di sini user belum login. Kalau device ini
   // pernah dipakai login sebelumnya, cache-nya masih ada duluan; kalau
@@ -38,8 +42,7 @@ export function LoginPage() {
   // gak bawa state.from, jadi user ke-lempar ke halaman default
   // rolenya padahal harusnya balik ke halaman yang tadinya diakses.
   if (session) {
-    const from = (location.state as { from?: string } | null)?.from
-    return <Navigate to={from ?? getDefaultRouteForRole(session.user.role)} replace />
+    return <Navigate to={getDefaultRouteForRole(session.user.role)} replace />
   }
 
   async function handleSubmit(event: FormEvent) {
