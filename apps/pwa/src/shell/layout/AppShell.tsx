@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { useUnreadNotifications } from '../notifications/useUnreadNotifications'
 import { NAV_ITEMS, ROUTES } from '../routing/routes'
 
 const linkClasses = (isActive: boolean) =>
@@ -21,6 +22,7 @@ const tabClasses = (isActive: boolean) =>
 export function AppShell() {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
+  const { count: unreadCount } = useUnreadNotifications()
 
   // Nav cuma nampilin halaman yang emang haknya role ini (SRS 2.2) --
   // Kasir gak lihat menu Dashboard/Produk/dst, cuma Kasir & Notifikasi.
@@ -38,7 +40,14 @@ export function AppShell() {
         <nav className="flex flex-1 flex-col gap-1">
           {visibleNavItems.map((item) => (
             <NavLink key={item.path} to={item.path} className={({ isActive }) => linkClasses(isActive)}>
-              {item.label}
+              <span className="inline-flex items-center gap-1.5">
+                {item.label}
+                {item.path === ROUTES.notifications && unreadCount > 0 && (
+                  <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700">
+                    {unreadCount}
+                  </span>
+                )}
+              </span>
             </NavLink>
           ))}
         </nav>
@@ -75,7 +84,14 @@ export function AppShell() {
       <nav className="fixed inset-x-0 bottom-0 flex gap-x-0.5 overflow-x-auto border-t border-slate-200 bg-white px-1 md:hidden print:hidden">
         {visibleNavItems.map((item) => (
           <NavLink key={item.path} to={item.path} className={({ isActive }) => tabClasses(isActive)}>
-            {item.label}
+            <span className="relative">
+              {item.label}
+              {item.path === ROUTES.notifications && unreadCount > 0 && (
+                <span className="absolute -right-2.5 -top-1 rounded-full bg-red-100 px-1 text-[10px] font-semibold text-red-700">
+                  {unreadCount}
+                </span>
+              )}
+            </span>
           </NavLink>
         ))}
       </nav>
