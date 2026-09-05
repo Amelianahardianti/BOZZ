@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
-import { login } from '../api/auth'
-import { ApiRequestError } from '../api/client'
-import { Button, Card } from '../shell/design-system'
-import { useAuth } from '../shell/auth/useAuth'
-import { getDefaultRouteForRole } from '../shell/routing/routes'
+import { login } from '../../api/auth'
+import { ApiRequestError } from '../../api/client'
+import { Button, Card } from '../../shell/design-system'
+import { useAuth } from '../../shell/auth/useAuth'
+import { getDefaultRouteForRole } from '../../shell/routing/routes'
 
 /**
  * FR-FI-01. RequireAuth (router.tsx) ngelempar user belum-login ke

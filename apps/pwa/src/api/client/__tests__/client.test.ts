@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as authContext from '../shell/auth/auth-context'
-import { apiRequest } from './client'
+import * as authContext from '../../../shell/auth/auth-context'
+import { apiRequest } from '..'
 
-vi.mock('../shell/auth/auth-context', () => ({ notifyUnauthorized: vi.fn() }))
+vi.mock('../../../shell/auth/auth-context', () => ({ notifyUnauthorized: vi.fn() }))
 const mockedNotifyUnauthorized = vi.mocked(authContext.notifyUnauthorized)
 
 const originalFetch = globalThis.fetch

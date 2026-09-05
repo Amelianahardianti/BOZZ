@@ -1,13 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiRequestError } from '../api/client'
-import * as storeSettingsApi from '../api/storeSettings'
-import type { StoreSettings } from '../api/storeSettings'
-import * as imageUtils from '../shared/image'
-import { StoreSettingsPage } from './StoreSettingsPage'
+import { ApiRequestError } from '../../../api/client'
+import * as storeSettingsApi from '../../../api/storeSettings'
+import type { StoreSettings } from '../../../api/storeSettings'
+import * as imageUtils from '../../../shared/image'
+import { StoreSettingsPage } from '../StoreSettingsPage'
 
-vi.mock('../api/storeSettings', () => ({
+vi.mock('../../../api/storeSettings', () => ({
   fetchStoreSettings: vi.fn(),
   updateStoreSettings: vi.fn(),
 }))
@@ -15,8 +15,8 @@ vi.mock('../api/storeSettings', () => ({
 // validateLogoFile dibiarkan implementasi ASLI (murni, gak nyentuh
 // browser API) -- cuma compressImageToDataUrl yang di-mock, karena itu
 // butuh Image/canvas beneran yang jsdom gak bisa render.
-vi.mock('../shared/image', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../shared/image')>()
+vi.mock('../../../shared/image', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/image')>()
   return { ...actual, compressImageToDataUrl: vi.fn() }
 })
 

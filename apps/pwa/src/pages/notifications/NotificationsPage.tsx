@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { fetchNotifications, markNotificationRead, type Notification } from '../api/notifications'
-import { ApiRequestError } from '../api/client'
-import { Button, Card, EmptyState, PageHeader } from '../shell/design-system'
-import { notifyNotificationsChanged } from '../shell/notifications/useUnreadNotifications'
+import { fetchNotifications, markNotificationRead, type Notification } from '../../api/notifications'
+import { ApiRequestError } from '../../api/client'
+import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
+import { notifyNotificationsChanged } from '../../shell/notifications/useUnreadNotifications'
 
 type Filter = 'all' | 'unread'
 

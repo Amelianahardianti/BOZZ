@@ -1,12 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as platformsApi from '../api/platforms'
-import type { Platform } from '../api/platforms'
-import { ApiRequestError } from '../api/client'
-import { PlatformsPage } from './PlatformsPage'
+import * as platformsApi from '../../../api/platforms'
+import type { Platform } from '../../../api/platforms'
+import { ApiRequestError } from '../../../api/client'
+import { PlatformsPage } from '../PlatformsPage'
 
-vi.mock('../api/platforms', () => ({
+vi.mock('../../../api/platforms', () => ({
   fetchPlatforms: vi.fn(),
   connectPlatform: vi.fn(),
   disconnectPlatform: vi.fn(),

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { PaymentPanel } from './PaymentPanel'
+import { PaymentPanel } from '../PaymentPanel'
 
 describe('PaymentPanel', () => {
   it('default-nya cash, amount_paid udah keisi pas subtotal (kembalian 0)', () => {

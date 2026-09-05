@@ -1,9 +1,9 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { CachedProduct } from '../../shell/offline/db'
-import { CartPanel } from './CartPanel'
-import type { CartItem } from './types'
+import type { CachedProduct } from '../../../shell/offline/db'
+import { CartPanel } from '../CartPanel'
+import type { CartItem } from '../types'
 
 function buildProduct(overrides: Partial<CachedProduct> = {}): CachedProduct {
   return {

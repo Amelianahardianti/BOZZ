@@ -1,5 +1,5 @@
-import { readStoredSession } from '../shell/auth/auth-context'
-import { apiRequest } from './client'
+import { readStoredSession } from '../../shell/auth/auth-context'
+import { apiRequest } from '../client'
 
 export type TransactionType = 'walk_in' | 'pre_order'
 export type PaymentMethod = 'cash' | 'transfer' | 'ewallet'

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as storeSettingsApi from '../../api/storeSettings'
-import type { StoreSettings } from '../../api/storeSettings'
-import { db } from './db'
-import { getCachedStoreSettings, syncStoreSettingsCache } from './storeSettingsCache'
+import * as storeSettingsApi from '../../../api/storeSettings'
+import type { StoreSettings } from '../../../api/storeSettings'
+import { db } from '../db'
+import { getCachedStoreSettings, syncStoreSettingsCache } from '../storeSettingsCache'
 
-vi.mock('../../api/storeSettings', () => ({ fetchStoreSettings: vi.fn() }))
+vi.mock('../../../api/storeSettings', () => ({ fetchStoreSettings: vi.fn() }))
 
 const mockedFetchStoreSettings = vi.mocked(storeSettingsApi.fetchStoreSettings)
 

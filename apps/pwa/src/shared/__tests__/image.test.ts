@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_LOGO_FILE_BYTES, validateLogoFile } from './image'
+import { MAX_LOGO_FILE_BYTES, validateLogoFile } from '../image'
 
 function fileOf(type: string, sizeBytes: number): File {
   return new File([new Uint8Array(sizeBytes)], 'file', { type })

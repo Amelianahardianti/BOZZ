@@ -1,5 +1,5 @@
-import type { AuthSession } from '../shell/auth/auth-context'
-import { apiRequest } from './client'
+import type { AuthSession } from '../../shell/auth/auth-context'
+import { apiRequest } from '../client'
 
 /** POST /api/auth/login (contracts/api.yaml). */
 export function login(emailOrUsername: string, password: string): Promise<AuthSession> {

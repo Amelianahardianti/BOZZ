@@ -1,12 +1,12 @@
 import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as notificationsApi from '../../api/notifications'
-import type { Notification } from '../../api/notifications'
-import { AuthProvider } from '../auth/AuthProvider'
-import { STORAGE_KEY, type AuthSession } from '../auth/auth-context'
-import { notifyNotificationsChanged, useUnreadNotifications } from './useUnreadNotifications'
+import * as notificationsApi from '../../../api/notifications'
+import type { Notification } from '../../../api/notifications'
+import { AuthProvider } from '../../auth/AuthProvider'
+import { STORAGE_KEY, type AuthSession } from '../../auth/auth-context'
+import { notifyNotificationsChanged, useUnreadNotifications } from '../useUnreadNotifications'
 
-vi.mock('../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
+vi.mock('../../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
 
 const mockedFetch = vi.mocked(notificationsApi.fetchNotifications)
 

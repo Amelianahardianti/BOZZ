@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import type { CachedCategory, CachedProduct } from '../../shell/offline/db'
-import { ProductGrid } from './ProductGrid'
+import type { CachedCategory, CachedProduct } from '../../../shell/offline/db'
+import { ProductGrid } from '../ProductGrid'
 
 function buildProduct(overrides: Partial<CachedProduct> = {}): CachedProduct {
   return {

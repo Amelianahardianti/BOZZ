@@ -2,12 +2,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as authApi from '../api/auth'
-import { ApiRequestError } from '../api/client'
-import { AuthProvider } from '../shell/auth/AuthProvider'
-import { LoginPage } from './LoginPage'
+import * as authApi from '../../../api/auth'
+import { ApiRequestError } from '../../../api/client'
+import { AuthProvider } from '../../../shell/auth/AuthProvider'
+import { LoginPage } from '../LoginPage'
 
-vi.mock('../api/auth')
+vi.mock('../../../api/auth')
 
 function renderLoginPage() {
   const router = createMemoryRouter(

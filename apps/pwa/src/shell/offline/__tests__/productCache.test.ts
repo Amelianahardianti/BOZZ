@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as categoriesApi from '../../api/categories'
-import type { Category } from '../../api/categories'
-import * as productsApi from '../../api/products'
-import type { Product } from '../../api/products'
-import { db } from './db'
-import { getCachedCategories, getCachedProducts, syncProductCache } from './productCache'
+import * as categoriesApi from '../../../api/categories'
+import type { Category } from '../../../api/categories'
+import * as productsApi from '../../../api/products'
+import type { Product } from '../../../api/products'
+import { db } from '../db'
+import { getCachedCategories, getCachedProducts, syncProductCache } from '../productCache'
 
-vi.mock('../../api/categories', () => ({ fetchCategories: vi.fn() }))
-vi.mock('../../api/products', () => ({ fetchAllProducts: vi.fn() }))
+vi.mock('../../../api/categories', () => ({ fetchCategories: vi.fn() }))
+vi.mock('../../../api/products', () => ({ fetchAllProducts: vi.fn() }))
 
 const mockedFetchCategories = vi.mocked(categoriesApi.fetchCategories)
 const mockedFetchAllProducts = vi.mocked(productsApi.fetchAllProducts)

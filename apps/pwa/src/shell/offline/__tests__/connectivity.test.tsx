@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { act } from 'react'
 import { describe, expect, it } from 'vitest'
-import { isOnline, subscribeToConnectivity, useOnlineStatus } from './connectivity'
+import { isOnline, subscribeToConnectivity, useOnlineStatus } from '../connectivity'
 
 function setNavigatorOnLine(value: boolean) {
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, value })

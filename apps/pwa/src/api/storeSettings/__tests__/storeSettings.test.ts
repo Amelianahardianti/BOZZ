@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { STORAGE_KEY, type AuthSession } from '../shell/auth/auth-context'
-import { fetchStoreSettings, updateStoreSettings } from './storeSettings'
+import { STORAGE_KEY, type AuthSession } from '../../../shell/auth/auth-context'
+import { fetchStoreSettings, updateStoreSettings } from '..'
 
 const originalFetch = globalThis.fetch
 

@@ -1,5 +1,5 @@
-import { readStoredSession } from '../shell/auth/auth-context'
-import { apiRequest } from './client'
+import { readStoredSession } from '../../shell/auth/auth-context'
+import { apiRequest } from '../client'
 
 /** Cerminan #/components/schemas/Category di contracts/api.yaml. */
 export interface Category {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform, type Platform, type PlatformName } from '../api/platforms'
-import { ApiRequestError } from '../api/client'
-import { Button, Card, EmptyState, PageHeader } from '../shell/design-system'
+import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform, type Platform, type PlatformName } from '../../api/platforms'
+import { ApiRequestError } from '../../api/client'
+import { Button, Card, EmptyState, PageHeader } from '../../shell/design-system'
 
 const PLATFORM_LABEL: Record<PlatformName, string> = {
   shopee: 'Shopee',

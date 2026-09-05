@@ -1,12 +1,12 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as staffApi from '../api/staff'
-import type { Staff } from '../api/staff'
-import { ApiRequestError } from '../api/client'
-import { StaffPage } from './StaffPage'
+import * as staffApi from '../../../api/staff'
+import type { Staff } from '../../../api/staff'
+import { ApiRequestError } from '../../../api/client'
+import { StaffPage } from '../StaffPage'
 
-vi.mock('../api/staff', () => ({
+vi.mock('../../../api/staff', () => ({
   fetchStaff: vi.fn(),
   createStaff: vi.fn(),
   updateStaff: vi.fn(),

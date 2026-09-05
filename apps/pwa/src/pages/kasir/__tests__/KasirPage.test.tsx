@@ -1,22 +1,22 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CachedCategory, CachedProduct, CachedStoreSettings } from '../shell/offline/db'
-import * as outbox from '../shell/offline/outbox'
-import * as productCache from '../shell/offline/productCache'
-import * as storeSettingsCache from '../shell/offline/storeSettingsCache'
-import { KasirPage } from './KasirPage'
+import type { CachedCategory, CachedProduct, CachedStoreSettings } from '../../../shell/offline/db'
+import * as outbox from '../../../shell/offline/outbox'
+import * as productCache from '../../../shell/offline/productCache'
+import * as storeSettingsCache from '../../../shell/offline/storeSettingsCache'
+import { KasirPage } from '../KasirPage'
 
-vi.mock('../shell/offline/productCache', () => ({
+vi.mock('../../../shell/offline/productCache', () => ({
   getCachedProducts: vi.fn(),
   getCachedCategories: vi.fn(),
   syncProductCache: vi.fn(),
 }))
-vi.mock('../shell/offline/storeSettingsCache', () => ({
+vi.mock('../../../shell/offline/storeSettingsCache', () => ({
   getCachedStoreSettings: vi.fn(),
   syncStoreSettingsCache: vi.fn(),
 }))
-vi.mock('../shell/offline/outbox', () => ({ enqueueTransaction: vi.fn() }))
+vi.mock('../../../shell/offline/outbox', () => ({ enqueueTransaction: vi.fn() }))
 
 const mockedGetCachedProducts = vi.mocked(productCache.getCachedProducts)
 const mockedGetCachedCategories = vi.mocked(productCache.getCachedCategories)

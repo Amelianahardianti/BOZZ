@@ -1,5 +1,5 @@
-import { readStoredSession } from '../shell/auth/auth-context'
-import { apiRequest } from './client'
+import { readStoredSession } from '../../shell/auth/auth-context'
+import { apiRequest } from '../client'
 
 export type ExternalOrderStatus = 'new' | 'processing' | 'shipped' | 'completed' | 'cancelled'
 export type SlaType = 'instant' | 'same_day' | 'reguler'

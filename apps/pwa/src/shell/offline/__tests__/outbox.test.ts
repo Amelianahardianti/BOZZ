@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiRequestError } from '../../api/client'
-import * as transactionsApi from '../../api/transactions'
-import type { TransactionCreateRequest } from '../../api/transactions'
-import * as connectivity from './connectivity'
-import { db } from './db'
-import { enqueueTransaction, initOutboxSync, syncOutbox } from './outbox'
+import { ApiRequestError } from '../../../api/client'
+import * as transactionsApi from '../../../api/transactions'
+import type { TransactionCreateRequest } from '../../../api/transactions'
+import * as connectivity from '../connectivity'
+import { db } from '../db'
+import { enqueueTransaction, initOutboxSync, syncOutbox } from '../outbox'
 
-vi.mock('../../api/transactions', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../api/transactions')>()
+vi.mock('../../../api/transactions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../api/transactions')>()
   return { ...actual, postTransaction: vi.fn() }
 })
-vi.mock('./connectivity', () => ({
+vi.mock('../connectivity', () => ({
   isOnline: vi.fn(() => true),
   subscribeToConnectivity: vi.fn(() => () => {}),
 }))

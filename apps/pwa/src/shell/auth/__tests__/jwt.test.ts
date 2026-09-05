@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { fakeJwt } from '../../test/fixtures'
-import { decodeJwtExpiryMs } from './jwt'
+import { fakeJwt } from '../../../test/fixtures'
+import { decodeJwtExpiryMs } from '../jwt'
 
 describe('decodeJwtExpiryMs', () => {
   it('baca klaim exp (detik) jadi epoch ms', () => {

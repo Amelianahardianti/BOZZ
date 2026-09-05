@@ -1,14 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as notificationsApi from '../api/notifications'
-import type { Notification } from '../api/notifications'
-import { ApiRequestError } from '../api/client'
-import { AuthProvider } from '../shell/auth/AuthProvider'
-import { STORAGE_KEY, type AuthSession } from '../shell/auth/auth-context'
-import { NotificationsPage } from './NotificationsPage'
+import * as notificationsApi from '../../../api/notifications'
+import type { Notification } from '../../../api/notifications'
+import { ApiRequestError } from '../../../api/client'
+import { AuthProvider } from '../../../shell/auth/AuthProvider'
+import { STORAGE_KEY, type AuthSession } from '../../../shell/auth/auth-context'
+import { NotificationsPage } from '../NotificationsPage'
 
-vi.mock('../api/notifications', () => ({
+vi.mock('../../../api/notifications', () => ({
   fetchNotifications: vi.fn(),
   markNotificationRead: vi.fn(),
 }))

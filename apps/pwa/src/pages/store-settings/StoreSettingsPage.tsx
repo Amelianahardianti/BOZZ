@@ -1,8 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
-import { ApiRequestError } from '../api/client'
-import { fetchStoreSettings, updateStoreSettings } from '../api/storeSettings'
-import { compressImageToDataUrl, MAX_LOGO_FILE_BYTES, validateLogoFile } from '../shared/image'
-import { Button, Card, PageHeader, TextInput } from '../shell/design-system'
+import { ApiRequestError } from '../../api/client'
+import { fetchStoreSettings, updateStoreSettings } from '../../api/storeSettings'
+import { compressImageToDataUrl, MAX_LOGO_FILE_BYTES, validateLogoFile } from '../../shared/image'
+import { Button, Card, PageHeader, TextInput } from '../../shell/design-system'
 
 interface FormState {
   business_name: string

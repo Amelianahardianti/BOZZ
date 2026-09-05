@@ -1,4 +1,4 @@
-import { StubPage } from '../components/StubPage'
+import { StubPage } from '../../components/StubPage'
 
 export function DashboardPage() {
   return (

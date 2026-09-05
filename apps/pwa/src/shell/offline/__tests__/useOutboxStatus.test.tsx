@@ -1,9 +1,9 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { act } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { TransactionCreateRequest } from '../../api/transactions'
-import { db } from './db'
-import { useOutboxStatus } from './useOutboxStatus'
+import type { TransactionCreateRequest } from '../../../api/transactions'
+import { db } from '../db'
+import { useOutboxStatus } from '../useOutboxStatus'
 
 const samplePayload: TransactionCreateRequest = {
   type: 'walk_in',

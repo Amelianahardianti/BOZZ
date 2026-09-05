@@ -2,10 +2,10 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fakeJwt } from '../../test/fixtures'
-import { AuthProvider } from './AuthProvider'
-import { notifyUnauthorized, STORAGE_KEY } from './auth-context'
-import { useAuth } from './useAuth'
+import { fakeJwt } from '../../../test/fixtures'
+import { AuthProvider } from '../AuthProvider'
+import { notifyUnauthorized, STORAGE_KEY } from '../auth-context'
+import { useAuth } from '../useAuth'
 
 function Probe({ token = 'tok-1' }: { token?: string }) {
   const { session, login, logout } = useAuth()

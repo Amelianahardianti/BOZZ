@@ -2,25 +2,25 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as authApi from '../../api/auth'
-import * as notificationsApi from '../../api/notifications'
-import * as ordersApi from '../../api/orders'
-import * as platformsApi from '../../api/platforms'
-import { AuthProvider } from '../auth/AuthProvider'
-import { STORAGE_KEY, type AuthSession } from '../auth/auth-context'
-import { routeConfig } from './router'
-import { NAV_ITEMS, ROUTES, type AppRole } from './routes'
+import * as authApi from '../../../api/auth'
+import * as notificationsApi from '../../../api/notifications'
+import * as ordersApi from '../../../api/orders'
+import * as platformsApi from '../../../api/platforms'
+import { AuthProvider } from '../../auth/AuthProvider'
+import { STORAGE_KEY, type AuthSession } from '../../auth/auth-context'
+import { routeConfig } from '../router'
+import { NAV_ITEMS, ROUTES, type AppRole } from '../routes'
 
-vi.mock('../../api/auth')
+vi.mock('../../../api/auth')
 // AppShell (dirender di setiap rute berlogin) manggil useUnreadNotifications
 // buat badge di nav -- di-mock di sini biar test routing gak diam-diam
 // nembak fetch() beneran ke jaringan.
-vi.mock('../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
+vi.mock('../../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
 // OrdersPage & PlatformsPage manggil ini pas mount (it.each(NAV_ITEMS) di
 // bawah nyentuh SEMUA rute, termasuk keduanya) -- di-mock biar sama kayak
 // alasan notifications di atas.
-vi.mock('../../api/orders', () => ({ fetchOrders: vi.fn() }))
-vi.mock('../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
+vi.mock('../../../api/orders', () => ({ fetchOrders: vi.fn() }))
+vi.mock('../../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
 
 const mockedFetchNotifications = vi.mocked(notificationsApi.fetchNotifications)
 const mockedFetchOrders = vi.mocked(ordersApi.fetchOrders)

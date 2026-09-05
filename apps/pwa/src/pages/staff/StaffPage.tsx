@@ -6,9 +6,9 @@ import {
   fetchStaff,
   updateStaff,
   type Staff,
-} from '../api/staff'
-import { ApiRequestError } from '../api/client'
-import { Button, Card, ConfirmActionModal, EmptyState, PageHeader, TextInput } from '../shell/design-system'
+} from '../../api/staff'
+import { ApiRequestError } from '../../api/client'
+import { Button, Card, ConfirmActionModal, EmptyState, PageHeader, TextInput } from '../../shell/design-system'
 
 type Role = 'kasir' | 'pengepak'
 

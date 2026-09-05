@@ -1,9 +1,9 @@
 // Satu pintu buat semua panggilan ke backend (contracts/api.yaml).
-// Dipakai lewat fungsi per-domain (mis. api/auth.ts), bukan dipanggil
+// Dipakai lewat fungsi per-domain (mis. api/auth/index.ts), bukan dipanggil
 // fetch() langsung dari komponen -- biar format error & auth header
 // konsisten di satu tempat.
 
-import { notifyUnauthorized } from '../shell/auth/auth-context'
+import { notifyUnauthorized } from '../../shell/auth/auth-context'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 

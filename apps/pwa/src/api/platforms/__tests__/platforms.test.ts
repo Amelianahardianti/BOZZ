@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { STORAGE_KEY, type AuthSession } from '../shell/auth/auth-context'
-import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform } from './platforms'
+import { STORAGE_KEY, type AuthSession } from '../../../shell/auth/auth-context'
+import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform } from '..'
 
 const originalFetch = globalThis.fetch
 

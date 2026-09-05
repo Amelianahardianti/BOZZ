@@ -1,19 +1,19 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as ordersApi from '../api/orders'
-import type { OrderDetail } from '../api/orders'
-import * as platformsApi from '../api/platforms'
-import type { Platform } from '../api/platforms'
-import { ApiRequestError } from '../api/client'
-import { OrdersPage } from './OrdersPage'
+import * as ordersApi from '../../../api/orders'
+import type { OrderDetail } from '../../../api/orders'
+import * as platformsApi from '../../../api/platforms'
+import type { Platform } from '../../../api/platforms'
+import { ApiRequestError } from '../../../api/client'
+import { OrdersPage } from '../OrdersPage'
 
-vi.mock('../api/orders', () => ({
+vi.mock('../../../api/orders', () => ({
   fetchOrders: vi.fn(),
   fetchOrderDetail: vi.fn(),
   updateOrderStatus: vi.fn(),
 }))
-vi.mock('../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
+vi.mock('../../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
 
 const mockedFetchOrders = vi.mocked(ordersApi.fetchOrders)
 const mockedFetchOrderDetail = vi.mocked(ordersApi.fetchOrderDetail)

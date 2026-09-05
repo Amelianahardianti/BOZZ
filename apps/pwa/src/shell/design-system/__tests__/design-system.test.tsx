@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Button, Card, ConfirmActionModal, EmptyState, PageHeader } from './index'
+import { Button, Card, ConfirmActionModal, EmptyState, PageHeader } from '../index'
 
 describe('Button', () => {
   it('merender children dan manggil onClick pas diklik', async () => {
