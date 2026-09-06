@@ -49,7 +49,7 @@ export function readStoredSession(): AuthSession | null {
 const UNAUTHORIZED_EVENT = 'pos-pwa:unauthorized'
 
 /**
- * Dipanggil api/client.ts pas backend BENERAN nolak token (401) --
+ * Dipanggil api/client/index.ts pas backend BENERAN nolak token (401) --
  * sinyal paling otoritatif kalau sesi udah gak valid, lebih bisa
  * dipercaya daripada sekadar ngitung waktu di client (jam device bisa
  * meleset). AuthProvider dengerin ini lewat onUnauthorized() di bawah

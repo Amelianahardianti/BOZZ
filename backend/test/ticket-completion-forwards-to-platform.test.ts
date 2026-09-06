@@ -32,7 +32,7 @@
 
 import { randomUUID } from 'crypto';
 import request from 'supertest';
-import { describe, expect, it, jest, afterEach } from '@jest/globals';
+import { beforeAll, describe, expect, it, jest, afterEach } from '@jest/globals';
 import { app } from '../src/app';
 import * as authRepo from '../src/modules/auth-product/repository';
 import type { User } from '../src/modules/auth-product/repository';
@@ -40,6 +40,7 @@ import * as ecommerceRepo from '../src/modules/ecommerce-sync/repository';
 import * as registry from '../src/modules/ecommerce-sync/adapters/registry';
 import type { PlatformCredentials } from '../src/modules/ecommerce-sync/types';
 import { ownerToken, tokenFor } from './helpers/auth';
+import { bikinExternalOrder, pinjamAkun, siapkanKolamAkun } from './helpers/fixtures';
 
 jest.mock('../src/modules/auth-product/repository');
 jest.mock('../src/modules/ecommerce-sync/repository');
@@ -95,10 +96,14 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
+beforeAll(async () => {
+  await siapkanKolamAkun();
+});
+
 describe('Ticket handed_over -> A publish -> B forward -> adapter (integrasi lintas modul, produksi asli)', () => {
   it('centang item terakhir ticket -> B benar-benar forward ke adapter platform dengan external order id + status yang benar', async () => {
     const owner = ownerToken();
-    const pengepakId = `pengepak-${randomUUID().slice(0, 8)}`;
+    const pengepakId = pinjamAkun();
     const pengepak = buildUser({ id: pengepakId, role: 'pengepak' });
     mockedAuthRepo.findById.mockImplementation(async (id: string) =>
       id === pengepakId ? pengepak : null
@@ -107,7 +112,7 @@ describe('Ticket handed_over -> A publish -> B forward -> adapter (integrasi lin
     // Order internal (UUID `external_orders.id`) -- ini yang dipakai sebagai
     // `external_order_id` di ticket & di payload ORDER_STATUS_CHANGED,
     // BUKAN kode marketplace mentah (lihat audit Step 4/5 sebelumnya).
-    const internalOrderId = randomUUID();
+    const internalOrderId = await bikinExternalOrder();
     mockedEcommerceRepo.getExternalOrderDetailRow.mockResolvedValue({
       id: internalOrderId,
       platform_id: 'platform-uuid-fakestore',

@@ -2,23 +2,26 @@
 
 // Token login siap pakai untuk test modul SELAIN auth-product.
 //
-// Kenapa tidak lewat POST /api/auth/login saja? Karena sejak modul
-// auth-product tersambung ke Postgres, login beneran butuh database
-// (sekarang: Supabase bersama) plus akun yang sudah di-seed di sana.
-// Kalau test modul lain ikut lewat sana, akibatnya:
-//
-//   1. test tidak bisa jalan tanpa jaringan + kredensial database,
-//   2. test menulis akun contekan ke database yang dipakai bersama,
-//   3. test modul lain ikut merah setiap kali auth-product ganti nama
-//      field atau cara simpannya -- padahal yang diuji bukan itu.
-//
-// Yang benar-benar dipakai modul lain cuma satu: JWT yang lolos
+// Kenapa tidak lewat POST /api/auth/login saja? Karena login beneran
+// butuh password yang cocok, dan yang diuji modul lain bukan itu. Yang
+// benar-benar dipakai modul lain cuma satu: JWT yang lolos
 // requireAuth/requireRole di shared/middleware/auth.ts. Itulah batas
 // yang ditiru di sini -- token ditandatangani dengan secret yang sama
 // dan isi payload yang sama ({ sub, role }).
 //
 // Menguji bahwa username + password yang benar menghasilkan token tetap
 // tugas test milik modul auth-product.
+//
+// TAPI: sejak sales-inventory tersambung ke Postgres, `sub` tidak boleh
+// lagi diisi id karangan seperti 'test-owner'. Kolom products.created_by,
+// transactions.cashier_user_id, dan tickets.assigned_to_user_id semuanya
+// UUID dengan foreign key ke tabel users -- id yang tidak ada barisnya
+// bikin INSERT-nya ditolak database.
+//
+// Jadi id di bawah menunjuk ke tiga akun khusus test yang dibuat lewat
+// scripts/seed-test-users.sql. Jalankan script itu dulu di database yang
+// dipakai `npm test`, kalau tidak test yang menulis data akan gagal
+// dengan pelanggaran foreign key.
 
 import jwt from 'jsonwebtoken';
 import { Role } from '../../src/shared/middleware/auth';
@@ -27,10 +30,10 @@ import { Role } from '../../src/shared/middleware/auth';
 // tidak token buatan sini akan ditolak.
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-ganti-di-production';
 
-/** ID user yang dipakai test, biar bisa dicocokkan di created_by dkk. */
-export const OWNER_ID = 'test-owner';
-export const KASIR_ID = 'test-kasir';
-export const PENGEPAK_ID = 'test-pengepak';
+/** UUID akun test di scripts/seed-test-users.sql. Harus sama persis. */
+export const OWNER_ID = '33333333-3333-4333-8333-333333333301';
+export const KASIR_ID = '33333333-3333-4333-8333-333333333302';
+export const PENGEPAK_ID = '33333333-3333-4333-8333-333333333303';
 
 const DEFAULT_ID: Record<Role, string> = {
   owner: OWNER_ID,

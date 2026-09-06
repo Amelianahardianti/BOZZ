@@ -14,17 +14,15 @@ import { AppError, badRequest, conflict, forbidden, notFound } from '../../share
 import { EVENTS, publish } from '../../shared/event-bus';
 import {
   Category,
-  ImportJob,
-  ImportJobRowNote,
   PaymentMethod,
   Product,
   StockAdjustment,
-  StoredTransaction,
   Ticket,
   TicketStatus,
   Transaction,
   TransactionType,
-} from './internal/store';
+} from './repository';
+import { ImportJob, ImportJobRowNote } from './internal/store';
 import { parseProductWorkbook, RawImportRow } from './internal/product-import';
 // Modul lain hanya boleh diakses lewat index.ts-nya, bukan file dalamnya.
 import { createNotification, findActiveUser } from '../auth-product';
@@ -471,28 +469,32 @@ function uang(nilai: number): number {
 }
 
 /**
- * Sidik jari isi request, buat mendeteksi Idempotency-Key yang dipakai
- * ulang untuk isi yang berbeda. Item diurutkan dulu supaya urutan yang
- * berbeda tapi isinya sama tetap dianggap sama.
+ * Sidik jari isi transaksi, buat mendeteksi Idempotency-Key yang dipakai
+ * ulang untuk isi yang BERBEDA.
+ *
+ * Bahannya sengaja dipilih yang semuanya ikut tersimpan di database
+ * (kolom transactions + baris transaction_items), supaya sidik jari
+ * transaksi lama bisa dihitung ULANG dari barisnya -- tidak perlu kolom
+ * khusus buat menyimpan sidik jarinya. Item diurutkan dulu supaya urutan
+ * yang berbeda tapi isinya sama tetap dianggap sama.
  */
-function fingerprintRequest(input: CheckoutRequest): string {
+function fingerprint(bahan: {
+  type: TransactionType;
+  customer_id: string | null;
+  payment_method: PaymentMethod;
+  amount_paid: number | null;
+  items: { product_id: string; qty: number }[];
+}): string {
   const normalized = JSON.stringify({
-    type: input.type,
-    customer_id: input.customer_id ?? null,
-    payment_method: input.payment_method,
-    amount_paid: input.amount_paid ?? null,
-    items: [...input.items]
+    type: bahan.type,
+    customer_id: bahan.customer_id,
+    payment_method: bahan.payment_method,
+    amount_paid: bahan.amount_paid,
+    items: [...bahan.items]
       .map((i) => ({ product_id: i.product_id, qty: i.qty }))
       .sort((a, b) => a.product_id.localeCompare(b.product_id)),
   });
   return createHash('sha256').update(normalized).digest('hex');
-}
-
-/** Buang field internal sebelum dikirim ke frontend. */
-function toPublicTransaction(stored: StoredTransaction): Transaction {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { request_fingerprint: _fingerprint, ...publicTransaction } = stored;
-  return publicTransaction;
 }
 
 /**
@@ -521,7 +523,27 @@ export interface CheckoutRequest {
 }
 
 export async function checkout(input: CheckoutRequest): Promise<Transaction> {
-  const fingerprint = fingerprintRequest(input);
+  // Item digabung DULU, baru disidikjari: yang tersimpan di database juga
+  // versi gabungannya, jadi sidik jari request dan sidik jari transaksi
+  // lama dihitung dari bahan yang bentuknya sama persis.
+  const items = gabungkanItemKembar(input.items);
+
+  // Ditulis persis seperti yang nanti BENAR-BENAR tersimpan: non-tunai
+  // selalu berakhir null (tidak ada kembalian), dan nominal tunai
+  // dibulatkan dulu seperti saat disimpan. Kalau tidak begitu, request
+  // ulang yang sah bisa salah dianggap "isinya berbeda".
+  const amountPaidTersimpan =
+    input.payment_method === 'cash' && input.amount_paid !== undefined && input.amount_paid !== null
+      ? uang(input.amount_paid)
+      : null;
+
+  const sidikJari = fingerprint({
+    type: input.type,
+    customer_id: input.customer_id ?? null,
+    payment_method: input.payment_method,
+    amount_paid: amountPaidTersimpan,
+    items,
+  });
 
   return serializeStockWrite(async () => {
     // --- 1. Request yang sama diulang? (SRS 9.3) -------------------
@@ -530,18 +552,18 @@ export async function checkout(input: CheckoutRequest): Promise<Transaction> {
     // TIDAK boleh jadi transaksi (dan potongan stok) kedua.
     const sebelumnya = await repo.findTransactionByIdempotencyKey(input.idempotencyKey);
     if (sebelumnya) {
-      if (sebelumnya.request_fingerprint !== fingerprint) {
+      // Sidik jari transaksi lama dihitung ulang dari barisnya sendiri.
+      if (fingerprint(sebelumnya) !== sidikJari) {
         // Key sama tapi isinya beda = bug di pengirim. Kalau kita
         // balikin transaksi lama, kasir dapat struk barang yang salah.
         throw conflict(
           'Idempotency-Key ini sudah dipakai untuk transaksi lain yang isinya berbeda. Pakai key baru.'
         );
       }
-      return toPublicTransaction(sebelumnya);
+      return sebelumnya;
     }
 
     // --- 2. Kumpulkan produk & harga saat ini ----------------------
-    const items = gabungkanItemKembar(input.items);
     const baris = [];
 
     for (const item of items) {
@@ -597,7 +619,6 @@ export async function checkout(input: CheckoutRequest): Promise<Transaction> {
     // --- 4. Simpan: transaksi + potong stok, sekaligus --------------
     const { transaction, adjustments } = await repo.commitCheckout({
       idempotency_key: input.idempotencyKey,
-      request_fingerprint: fingerprint,
       type: input.type,
       customer_id: input.customer_id ?? null,
       cashier_user_id: input.cashierUserId,
@@ -624,7 +645,7 @@ export async function checkout(input: CheckoutRequest): Promise<Transaction> {
       });
     }
 
-    return toPublicTransaction(transaction);
+    return transaction;
   });
 }
 
@@ -694,7 +715,7 @@ export async function listTransactions(filter: {
   const { data, total } = await repo.listTransactions(filter);
 
   return {
-    data: data.map(toPublicTransaction),
+    data,
     page: filter.page,
     limit: filter.limit,
     total,
@@ -733,7 +754,7 @@ export async function voidTransaction(input: {
       });
     }
 
-    return toPublicTransaction(transaction);
+    return transaction;
   });
 }
 
@@ -743,7 +764,7 @@ export async function getTransaction(id: string): Promise<Transaction> {
   if (!transaction) {
     throw notFound('Transaksi tidak ditemukan.');
   }
-  return toPublicTransaction(transaction);
+  return transaction;
 }
 // ---------------------------------------------------------------------
 // Ticket packing (POST /tickets)
