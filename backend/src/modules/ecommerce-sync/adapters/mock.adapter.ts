@@ -41,7 +41,17 @@ function buildFixtures(platformName: string): NormalizedOrder[] {
   ];
 }
 
-export function createMockAdapter(platformName: string, redirectUri: string): PlatformAdapter {
+export interface MockAdapter extends PlatformAdapter {
+  /** Cuma buat test/inspeksi -- bukan bagian kontrak PlatformAdapter. */
+  getMockStock(productId: string): number | undefined;
+}
+
+export function createMockAdapter(platformName: string, redirectUri: string): MockAdapter {
+  // "Database stok" versi mock, di memori -- SRS §8.2 tidak minta ini
+  // benar-benar sampai ke Shopee/TikTok sungguhan, cukup buktikan
+  // pipeline event -> adapter jalan.
+  const mockStock = new Map<string, number>();
+
   return {
     name: platformName,
 
@@ -65,5 +75,11 @@ export function createMockAdapter(platformName: string, redirectUri: string): Pl
     }),
 
     fetchRecentOrders: async () => buildFixtures(platformName),
+
+    updateStockOnPlatform: async (_creds, productId, stockAfter) => {
+      mockStock.set(productId, stockAfter);
+    },
+
+    getMockStock: (productId) => mockStock.get(productId),
   };
 }

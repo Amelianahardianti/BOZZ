@@ -45,4 +45,6 @@ export interface PlatformAdapter {
   verifyWebhookSignature?(rawBody: string, headers: Record<string, string | string[] | undefined>): boolean;
   normalizeWebhookPayload?(payload: unknown): NormalizedOrder | null;
   updateOrderStatusOnPlatform?(creds: PlatformCredentials, externalOrderId: string, status: string): Promise<void>;
+  /** Hanya diisi adapter yang sudah dukung sinkronisasi stok keluar (SRS §8.2, event stock.updated). */
+  updateStockOnPlatform?(creds: PlatformCredentials, productId: string, stockAfter: number): Promise<void>;
 }
