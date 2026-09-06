@@ -196,15 +196,33 @@ export async function upsertExternalOrderRow(input: UpsertOrderInput) {
 
       await tx.external_order_items.deleteMany({ where: { external_order_id: row.id } });
       if (input.items.length) {
-        await tx.external_order_items.createMany({
-          data: input.items.map((item) => ({
-            external_order_id: row.id,
-            external_item_ref: item.externalItemRef,
-            item_name_snapshot: item.itemName,
-            qty: item.qty,
-            unit_price: item.unitPrice,
-          })),
-        });
+        // MVP product mapping (lihat laporan audit "Order -> Ticket"): satu-
+        // satunya identifier string yang benar-benar tersedia di seluruh
+        // adapter saat ini adalah `externalItemRef` (Shopee: item_id, TikTok:
+        // line_items[].id, FakeStore/mock: productId/ref buatan) -- TIDAK ada
+        // adapter yang membawa field SKU asli terpisah. Jadi matching di sini
+        // sengaja pakai `externalItemRef` sebagai kandidat SKU, exact match
+        // SAJA (bukan fuzzy, bukan name match) terhadap `products.sku`. Kalau
+        // di masa depan ada adapter yang membawa SKU asli (mis. Shopee
+        // `model_sku`), cukup tambah field itu ke urutan pengecekan di bawah
+        // -- prioritas paling atas yang match duluan yang dipakai.
+        const itemsWithProductId = await Promise.all(
+          input.items.map(async (item) => {
+            const candidateSku = item.externalItemRef;
+            const product = candidateSku
+              ? await tx.products.findFirst({ where: { sku: candidateSku }, select: { id: true } })
+              : null;
+            return {
+              external_order_id: row.id,
+              product_id: product?.id ?? null,
+              external_item_ref: item.externalItemRef,
+              item_name_snapshot: item.itemName,
+              qty: item.qty,
+              unit_price: item.unitPrice,
+            };
+          })
+        );
+        await tx.external_order_items.createMany({ data: itemsWithProductId });
       }
 
       return row;
