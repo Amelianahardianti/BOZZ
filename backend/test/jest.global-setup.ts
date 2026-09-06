@@ -55,6 +55,40 @@ export default async function bersihkanJejakRunSebelumnya(): Promise<void> {
     // checkout/void yang barisnya sudah hilang di atas.
     await pool.query(`DELETE FROM stock_adjustments WHERE adjusted_by_user_id IN ${AKUN_TEST}`);
 
+    // Produk contoh/demo buatan akun test kadang KEPAKE transaksi/adjustment
+    // NYATA (owner, kasir asli) pas development/demo manual -- bukan cuma
+    // dari akun test sendiri. Baris di atas (yang nyaring lewat cashier/
+    // adjusted_by) gak nangkep kasus ini, jadi DELETE FROM products di
+    // bawah bisa gagal kena FK constraint. Ditutup di sini: hapus dulu
+    // SEMUA transaction_items/stock_adjustments yang mereferensikan produk
+    // yang emang bakal dihapus (apa pun pemilik transaksi/adjustment-nya),
+    // BUKAN menghapus transaksi/produk lain yang gak relevan. Transaction
+    // yang jadi kosong sama sekali (semua item-nya kehapus di atas) ikut
+    // dibuang -- baris transaksi tanpa item gak pernah valid secara bisnis
+    // (checkout selalu punya >=1 item), jadi aman dianggap sisa cleanup.
+    await pool.query(`DELETE FROM transaction_items WHERE product_id IN (
+      SELECT id FROM products WHERE created_by IN ${AKUN_TEST}
+    )`);
+    await pool.query(`DELETE FROM transactions WHERE id NOT IN (
+      SELECT DISTINCT transaction_id FROM transaction_items
+    )`);
+    await pool.query(`DELETE FROM stock_adjustments WHERE product_id IN (
+      SELECT id FROM products WHERE created_by IN ${AKUN_TEST}
+    )`);
+
+    // Gap yang sama persis, tapi buat ticket packing -- ticket_items juga
+    // menunjuk products, dan ticket-nya bisa dibuat lewat akun NYATA
+    // (owner/pengepak asli) buat produk demo/test. Pola identik: hapus
+    // ticket_items yang menunjuk produk yang bakal dihapus dulu, baru
+    // buang ticket yang jadi kosong sama sekali (ticket tanpa item juga
+    // gak pernah valid secara bisnis -- createTicket selalu >=1 item).
+    await pool.query(`DELETE FROM ticket_items WHERE product_id IN (
+      SELECT id FROM products WHERE created_by IN ${AKUN_TEST}
+    )`);
+    await pool.query(`DELETE FROM tickets WHERE id NOT IN (
+      SELECT DISTINCT ticket_id FROM ticket_items
+    )`);
+
     // Produk & kategori contoh punya created_by NULL -- sengaja tidak
     // ikut kena, supaya seed-nya tidak perlu dijalankan ulang tiap kali.
     await pool.query(`DELETE FROM products WHERE created_by IN ${AKUN_TEST}`);

@@ -83,6 +83,7 @@ describe('fetchOrderDetail', () => {
       external_order_items: [
         { id: 'i1', product_id: null, external_item_ref: null, item_name_snapshot: 'Kopi', qty: 2, unit_price: '18000' },
       ],
+      tickets: [],
     })
 
     const result = await fetchOrderDetail('1')
@@ -93,6 +94,7 @@ describe('fetchOrderDetail', () => {
     expect(result.items[0].item_name_snapshot).toBe('Kopi')
     expect(result.items[0].unit_price).toBe(18000)
     expect(typeof result.items[0].unit_price).toBe('number')
+    expect(result.ticket).toBeNull()
   })
 })
 

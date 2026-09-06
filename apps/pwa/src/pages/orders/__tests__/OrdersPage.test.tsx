@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ordersApi from '../../../api/orders'
 import type { OrderDetail } from '../../../api/orders'
@@ -7,6 +8,17 @@ import * as platformsApi from '../../../api/platforms'
 import type { Platform } from '../../../api/platforms'
 import { ApiRequestError } from '../../../api/client'
 import { OrdersPage } from '../OrdersPage'
+
+// OrdersPage skrg pakai useNavigate() (tombol "Lihat Ticket") -- butuh
+// Router context biar gak throw, MemoryRouter polos cukup (bukan nguji
+// routing beneran, cuma nyediain context).
+function renderOrdersPage() {
+  return render(
+    <MemoryRouter>
+      <OrdersPage />
+    </MemoryRouter>
+  )
+}
 
 vi.mock('../../../api/orders', () => ({
   fetchOrders: vi.fn(),
@@ -49,6 +61,7 @@ function buildOrder(overrides: Partial<OrderDetail> = {}): OrderDetail {
     shipping_address_snapshot: { address: 'Jl. Melati No. 5' },
     raw_payload: {},
     items: [{ id: 'item-1', product_id: null, external_item_ref: null, item_name_snapshot: 'Kopi Susu', qty: 2, unit_price: 18000 }],
+    ticket: null,
     ...overrides,
   }
 }
@@ -63,7 +76,7 @@ describe('OrdersPage', () => {
     const order = buildOrder()
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     expect(await screen.findByText('SP-991', { exact: false })).toBeInTheDocument()
     expect(screen.getAllByText('shopee', { exact: false }).length).toBeGreaterThan(0)
@@ -80,7 +93,7 @@ describe('OrdersPage', () => {
     const order = buildOrder({ sla_deadline: new Date(Date.now() - 3600_000).toISOString(), status: 'processing' })
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     expect(await screen.findByText(/\(lewat\)/)).toBeInTheDocument()
   })
@@ -89,7 +102,7 @@ describe('OrdersPage', () => {
     const order = buildOrder({ sla_deadline: new Date(Date.now() - 3600_000).toISOString(), status: 'completed' })
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     await screen.findByText('SP-991', { exact: false })
     expect(screen.queryByText(/\(lewat\)/)).not.toBeInTheDocument()
@@ -97,14 +110,14 @@ describe('OrdersPage', () => {
 
   it('daftar kosong -- empty state', async () => {
     mockedFetchOrders.mockResolvedValue([])
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     expect(await screen.findByText('Gak ada order')).toBeInTheDocument()
   })
 
   it('gagal load -- pesan error dari backend', async () => {
     mockedFetchOrders.mockRejectedValue(new ApiRequestError(500, 'INTERNAL_ERROR', 'Server lagi down.'))
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     expect(await screen.findByText('Server lagi down.')).toBeInTheDocument()
   })
@@ -114,7 +127,7 @@ describe('OrdersPage', () => {
     const order = buildOrder()
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
-    render(<OrdersPage />)
+    renderOrdersPage()
     await screen.findByText('SP-991', { exact: false })
 
     await user.selectOptions(screen.getByLabelText('Status'), 'processing')
@@ -132,7 +145,7 @@ describe('OrdersPage', () => {
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
     mockedUpdateStatus.mockResolvedValue({ ...order, status: 'processing' })
-    render(<OrdersPage />)
+    renderOrdersPage()
     await screen.findByText('SP-991', { exact: false })
 
     // aria-label ditambah di select ini (ProductsPage-style consistency
@@ -147,7 +160,7 @@ describe('OrdersPage', () => {
     const order = buildOrder({ shipping_address_snapshot: null })
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     await screen.findByText('SP-991', { exact: false })
     expect(screen.queryByText(/Alamat:/)).not.toBeInTheDocument()
@@ -158,7 +171,7 @@ describe('OrdersPage', () => {
     const orderB = buildOrder({ id: 'order-2', external_order_id: 'SP-992', items: [{ id: 'i2', product_id: null, external_item_ref: null, item_name_snapshot: 'Roti Bakar', qty: 3, unit_price: 15000 }] })
     mockedFetchOrders.mockResolvedValue([orderA, orderB])
     mockedFetchOrderDetail.mockImplementation((id) => Promise.resolve(id === 'order-1' ? orderA : orderB))
-    render(<OrdersPage />)
+    renderOrdersPage()
 
     expect(await screen.findByText('Kopi Susu', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('Roti Bakar', { exact: false })).toBeInTheDocument()
@@ -171,7 +184,7 @@ describe('OrdersPage', () => {
       const order = buildOrder()
       mockedFetchOrders.mockResolvedValue([order])
       mockedFetchOrderDetail.mockResolvedValue(order)
-      render(<OrdersPage />)
+      renderOrdersPage()
       await screen.findByText('SP-991', { exact: false })
 
       expect(mockedFetchOrders).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 10 }))
@@ -185,7 +198,7 @@ describe('OrdersPage', () => {
         Array.from({ length: 10 }, (_, i) => buildOrder({ id: `o${i}`, external_order_id: `SP-${i}` })),
       )
       mockedFetchOrderDetail.mockImplementation((id) => Promise.resolve(buildOrder({ id, external_order_id: id })))
-      render(<OrdersPage />)
+      renderOrdersPage()
       await screen.findByText('Halaman 1')
       expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeEnabled()
 
@@ -199,7 +212,7 @@ describe('OrdersPage', () => {
       const order = buildOrder()
       mockedFetchOrders.mockResolvedValue([order]) // 1 hasil < pageSize (10)
       mockedFetchOrderDetail.mockResolvedValue(order)
-      render(<OrdersPage />)
+      renderOrdersPage()
 
       await screen.findByText('SP-991', { exact: false })
       expect(screen.getByRole('button', { name: 'Berikutnya' })).toBeDisabled()
@@ -210,7 +223,7 @@ describe('OrdersPage', () => {
       const order = buildOrder()
       mockedFetchOrders.mockResolvedValue(Array.from({ length: 10 }, (_, i) => buildOrder({ id: `o${i}`, external_order_id: `SP-${i}` })))
       mockedFetchOrderDetail.mockImplementation((id) => Promise.resolve(buildOrder({ id, external_order_id: id })))
-      render(<OrdersPage />)
+      renderOrdersPage()
       await screen.findByText('Halaman 1')
 
       await user.click(screen.getByRole('button', { name: 'Berikutnya' }))

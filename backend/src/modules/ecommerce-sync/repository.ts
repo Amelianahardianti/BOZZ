@@ -258,6 +258,19 @@ export async function listExternalOrderRows(filters: OrderListFilters) {
       sla_deadline: true,
       total_amount: true,
       received_at: true,
+      // Read-only, additive (laporan "Ticket Persistence"): expose relasi
+      // tickets yang sudah ada di schema tapi belum pernah di-select --
+      // biar frontend tau "order ini sudah ada ticket-nya" PERMANEN
+      // (bertahan lewat refresh), bukan cuma state React sementara.
+      // `take: 1` aman karena satu order = maks satu ticket dijamin
+      // business rule di sales-inventory/service.ts (cek
+      // findTicketByExternalOrderId sebelum create), meski relasi Prisma
+      // ini sendiri bukan @@unique di level DB.
+      tickets: {
+        select: { id: true, status: true, assigned_to_user_id: true },
+        orderBy: { created_at: 'desc' },
+        take: 1,
+      },
     },
     orderBy: { sla_deadline: 'asc' },
     skip: (filters.page - 1) * filters.limit,
@@ -272,6 +285,11 @@ export async function getExternalOrderDetailRow(id: string) {
     include: {
       external_order_items: true,
       order_shipping_address: true,
+      tickets: {
+        select: { id: true, status: true, assigned_to_user_id: true },
+        orderBy: { created_at: 'desc' },
+        take: 1,
+      },
     },
   });
 }

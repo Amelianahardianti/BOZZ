@@ -450,12 +450,20 @@ describe('GET /api/tickets', () => {
       assigned.body.some((t: { external_order_id: string }) => t.external_order_id === orderId)
     ).toBe(true);
 
-    // Belum ada endpoint pengubah status, jadi status lain pasti kosong.
+    // Belum ada endpoint pengubah status di test ini, jadi TICKET YANG
+    // BARU DIBUAT DI SINI pasti gak mungkin muncul di filter status lain.
+    // TIDAK di-assert bahwa filter 'handed_over' KOSONG SECARA GLOBAL --
+    // DB yang dipakai `npm test` sama-sama dipakai buat demo/testing
+    // manual (akun asli, bukan akun test), jadi ticket handed_over asli
+    // BOLEH ada di sana; yang penting cuma ticket bikinan test ini sendiri
+    // gak ikut nyasar ke filter status yang salah.
     const handedOver = await request(app)
       .get('/api/tickets')
       .query({ status: 'handed_over', limit: 100 })
       .set('Authorization', `Bearer ${token}`);
-    expect(handedOver.body).toEqual([]);
+    expect(
+      handedOver.body.some((t: { external_order_id: string }) => t.external_order_id === orderId)
+    ).toBe(false);
   });
 
   it('memotong hasil per halaman', async () => {

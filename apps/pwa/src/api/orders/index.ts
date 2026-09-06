@@ -1,8 +1,19 @@
 import { readStoredSession } from '../../shell/auth/auth-context'
 import { apiRequest } from '../client'
+import type { TicketStatus } from '../tickets'
 
 export type ExternalOrderStatus = 'new' | 'processing' | 'shipped' | 'completed' | 'cancelled'
 export type SlaType = 'instant' | 'same_day' | 'reguler'
+
+/** Ringkasan ticket packing order ini (kalau sudah ada) -- read-only, dari
+ *  relasi Prisma `tickets` yang sudah ada di schema (repository.ts). Cuma
+ *  1 ticket per order (dijamin business rule create-ticket, bukan @@unique
+ *  DB), jadi field ini singular, bukan array. */
+export interface OrderTicketSummary {
+  id: string
+  status: TicketStatus
+  assigned_to_user_id: string | null
+}
 
 /** Cerminan #/components/schemas/ExternalOrderListItem -- TANPA raw_payload (SRS 10.5). */
 export interface OrderListItem {
@@ -15,6 +26,8 @@ export interface OrderListItem {
   sla_deadline: string | null
   total_amount: number | null
   received_at: string
+  /** null kalau order ini belum pernah dibikinkan ticket packing. */
+  ticket: OrderTicketSummary | null
 }
 
 export interface OrderItem {
@@ -55,12 +68,19 @@ export interface FetchOrdersParams {
 //     dipakai di sini, bukan dokumen kontraknya -- kalau nanti
 //     kontraknya diperbaiki menyusul, cukup field mapping di
 //     normalizeOrderDetail() ini yang disesuaikan.
-type RawOrderListItem = Omit<OrderListItem, 'total_amount'> & { total_amount: string | number | null }
+// `tickets` di wire itu ARRAY (relasi Prisma one-to-many, lihat komentar
+// repository.ts), walau secara business rule maks 1 baris -- dinormalisasi
+// jadi `ticket` singular (ambil index 0) di sini, bukan di tiap pemakai.
+type RawOrderListItem = Omit<OrderListItem, 'total_amount' | 'ticket'> & {
+  total_amount: string | number | null
+  tickets: OrderTicketSummary[]
+}
 type RawOrderItem = Omit<OrderItem, 'unit_price'> & { unit_price: string | number | null }
-type RawOrderDetail = Omit<OrderDetail, 'total_amount' | 'items' | 'shipping_address_snapshot'> & {
+type RawOrderDetail = Omit<OrderDetail, 'total_amount' | 'items' | 'shipping_address_snapshot' | 'ticket'> & {
   total_amount: string | number | null
   external_order_items: RawOrderItem[]
   order_shipping_address: Record<string, unknown> | null
+  tickets: OrderTicketSummary[]
 }
 
 function toNumber(value: string | number | null): number | null {
@@ -69,16 +89,21 @@ function toNumber(value: string | number | null): number | null {
 }
 
 function normalizeOrder(raw: RawOrderListItem): OrderListItem {
-  return { ...raw, total_amount: toNumber(raw.total_amount) }
+  const { tickets, ...rest } = raw
+  // `PATCH /orders/:id/status` balikin baris order plain (gak nyertain
+  // relasi tickets sama sekali, beda dari GET /orders) -- `tickets` bisa
+  // `undefined` di raw itu, defensif biar gak crash.
+  return { ...rest, total_amount: toNumber(raw.total_amount), ticket: tickets?.[0] ?? null }
 }
 
 function normalizeOrderDetail(raw: RawOrderDetail): OrderDetail {
-  const { external_order_items, order_shipping_address, ...rest } = raw
+  const { external_order_items, order_shipping_address, tickets, ...rest } = raw
   return {
     ...rest,
     total_amount: toNumber(raw.total_amount),
     shipping_address_snapshot: order_shipping_address,
     items: external_order_items.map((item) => ({ ...item, unit_price: toNumber(item.unit_price) })),
+    ticket: tickets?.[0] ?? null,
   }
 }
 

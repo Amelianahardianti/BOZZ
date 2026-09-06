@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   fetchOrderDetail,
   fetchOrders,
@@ -8,8 +9,9 @@ import {
   type SlaType,
 } from '../../api/orders'
 import { fetchPlatforms, type Platform } from '../../api/platforms'
-import { createTicket } from '../../api/tickets'
+import { createTicket, type TicketStatus } from '../../api/tickets'
 import { fetchStaff, type Staff } from '../../api/staff'
+import { ROUTES } from '../../shell/routing/routes'
 import { ApiRequestError } from '../../api/client'
 import {
   Button,
@@ -48,6 +50,14 @@ const STATUS_TONE: Record<ExternalOrderStatus, BadgeTone> = {
   cancelled: 'neutral',
 }
 
+const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
+  unassigned: 'Belum ditugaskan',
+  assigned: 'Sudah ditugaskan',
+  packing: 'Sedang dikemas',
+  packed: 'Sudah dikemas',
+  handed_over: 'Sudah diserahkan',
+}
+
 // Label UI "Jenis Pengiriman" -- SlaType/SLA_LABEL (nama variabel & key)
 // SENGAJA tidak diubah, "SLA" tetap konsep/domain internal. Cuma teks
 // yang ditampilkan ke user yang diganti, karena instant/same_day/reguler
@@ -79,6 +89,7 @@ function isOverdue(order: OrderDetail): boolean {
 }
 
 export function OrdersPage() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState<OrderDetail[]>([])
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -92,12 +103,6 @@ export function OrdersPage() {
   const [ticketNotes, setTicketNotes] = useState('')
   const [ticketError, setTicketError] = useState<string | null>(null)
   const [isCreatingTicket, setIsCreatingTicket] = useState(false)
-  // Order yang barusan dibikinkan ticket -- ditandai lokal biar tombol
-  // "Buat Ticket"-nya langsung hilang tanpa nunggu reload, TAPI ini
-  // cuma tau ticket yang dibikin lewat sesi halaman ini sendiri. Kalau
-  // order-nya udah punya ticket dari sesi/pengguna lain, backend yang
-  // nolak (409 Conflict) -- pesannya ditampilin apa adanya.
-  const [ticketCreatedOrderIds, setTicketCreatedOrderIds] = useState<Set<string>>(new Set())
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(10)
@@ -192,13 +197,24 @@ export function OrdersPage() {
     setIsCreatingTicket(true)
     setTicketError(null)
     try {
-      await createTicket({
+      const ticket = await createTicket({
         external_order_id: creatingTicketFor.id,
         assigned_to_user_id: ticketPengepakId,
         notes: ticketNotes.trim() || undefined,
         items: validItems.map((item) => ({ product_id: item.product_id as string, qty: item.qty })),
       })
-      setTicketCreatedOrderIds((prev) => new Set(prev).add(creatingTicketFor.id))
+      // Update `ticket` order yang relevan langsung dari response --
+      // sumber kebenaran yang sama kayak yang bakal dibalikin GET /orders
+      // habis refresh (bukan lagi flag terpisah yang cuma hidup di state
+      // React, lihat "Ticket Persistence" fix).
+      const orderId = creatingTicketFor.id
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, ticket: { id: ticket.id, status: ticket.status, assigned_to_user_id: ticket.assigned_to_user_id } }
+            : o
+        )
+      )
       setCreatingTicketFor(null)
     } catch (err) {
       setTicketError(err instanceof ApiRequestError ? err.message : 'Gagal membuat ticket.')
@@ -351,13 +367,20 @@ export function OrdersPage() {
                       </option>
                     ))}
                   </select>
-                  {TICKETABLE_STATUSES.includes(order.status) && !ticketCreatedOrderIds.has(order.id) && (
+                  {order.ticket === null && TICKETABLE_STATUSES.includes(order.status) && (
                     <Button variant="secondary" onClick={() => openCreateTicket(order)}>
                       Buat Ticket
                     </Button>
                   )}
-                  {ticketCreatedOrderIds.has(order.id) && (
-                    <span className="text-xs font-medium text-green-600">Ticket dibuat</span>
+                  {order.ticket !== null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-green-600">
+                        Ticket: {TICKET_STATUS_LABEL[order.ticket.status]}
+                      </span>
+                      <Button variant="secondary" onClick={() => navigate(ROUTES.tickets)}>
+                        Lihat Ticket
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
