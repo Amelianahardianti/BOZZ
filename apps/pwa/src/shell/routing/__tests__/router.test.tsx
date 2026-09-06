@@ -115,14 +115,14 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('Kasir buka /dashboard (bukan haknya) -> dialihkan ke /kasir', async () => {
     const router = renderAt(ROUTES.dashboard, 'kasir')
 
-    expect(await screen.findByRole('heading', { name: 'Kasir' })).toBeInTheDocument()
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 
   it('Kasir buka halaman Kasir/POS -- boleh', async () => {
     renderAt(ROUTES.kasir, 'kasir')
 
-    expect(await screen.findByRole('heading', { name: 'Kasir' })).toBeInTheDocument()
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument()
   })
 
   it('Pengepak buka /kasir (bukan haknya) -> dialihkan ke /tickets (Ticket Saya)', async () => {
@@ -141,7 +141,7 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('"/" buat Kasir diarahkan ke /kasir, BUKAN /dashboard', async () => {
     const router = renderAt('/', 'kasir')
 
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 
@@ -156,7 +156,7 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
 describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
   it('Kasir cuma lihat menu Kasir & Notifikasi', async () => {
     renderAt(ROUTES.kasir, 'kasir')
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
 
     expect(screen.getAllByRole('link', { name: 'Kasir' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
@@ -227,7 +227,7 @@ describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
   it('Kasir/Pengepak gak bisa akses /settings/staff sama sekali (dialihkan ke halaman defaultnya)', async () => {
     const router = renderAt(ROUTES.staff, 'kasir')
 
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 })

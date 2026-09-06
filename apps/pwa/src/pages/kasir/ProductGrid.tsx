@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { FiSearch } from 'react-icons/fi'
 import { formatRupiah } from '../../shell/currency'
 import type { CachedCategory, CachedProduct } from '../../shell/offline/db'
 
@@ -31,14 +32,17 @@ export function ProductGrid({ products, categories, onAdd }: ProductGridProps) {
   }, [products, search, categoryId])
 
   return (
-    <div className="flex h-full flex-col">
-      <input
-        type="search"
-        placeholder="Cari produk atau SKU..."
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        className="mb-3 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-      />
+    <div className="flex flex-col">
+      <div className="relative mb-3">
+        <FiSearch aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="search"
+          placeholder="Cari produk atau SKU..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </div>
 
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
         <button
@@ -71,7 +75,7 @@ export function ProductGrid({ products, categories, onAdd }: ProductGridProps) {
       ) : filtered.length === 0 ? (
         <p className="mt-8 text-center text-sm text-slate-400">Gak ada produk yang cocok.</p>
       ) : (
-        <div className="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+        <div className="grid auto-rows-min grid-cols-2 gap-2 sm:grid-cols-3">
           {filtered.map((product) => (
             <button
               key={product.id}
@@ -81,6 +85,10 @@ export function ProductGrid({ products, categories, onAdd }: ProductGridProps) {
               className="flex flex-col items-start rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <span className="text-sm font-medium text-slate-900">{product.name}</span>
+              {/* SKU tetap informasi SEKUNDER (text-xs, muted) -- Nama tetap
+                  paling menonjol. Ditampilkan karena search di atas juga
+                  bisa lewat SKU, jadi hasilnya perlu bisa diverifikasi. */}
+              {product.sku && <span className="text-xs text-slate-400">SKU: {product.sku}</span>}
               <span className="mt-1 text-sm font-semibold text-brand-700">{formatRupiah(product.price)}</span>
               <span className="mt-0.5 text-xs text-slate-400">
                 {product.stock_qty <= 0 ? 'Stok habis' : `Stok ${product.stock_qty}`}

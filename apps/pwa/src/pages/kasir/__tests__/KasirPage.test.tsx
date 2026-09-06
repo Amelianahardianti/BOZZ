@@ -148,7 +148,7 @@ describe('KasirPage -- alur checkout lengkap', () => {
 
     await user.click(await screen.findByRole('button', { name: /Kopi Susu/ }))
     await user.click(screen.getByRole('button', { name: 'Bayar' }))
-    await user.click(await screen.findByRole('button', { name: 'transfer' }))
+    await user.click(await screen.findByRole('button', { name: 'Transfer' }))
     await user.click(screen.getByRole('button', { name: 'Selesaikan Transaksi' }))
 
     expect(mockedEnqueueTransaction).toHaveBeenCalledWith(
