@@ -3,6 +3,7 @@ import { notFound } from '../../../shared/errors';
 import { shopeeAdapter } from './shopee';
 import { tiktokAdapter } from './tiktok';
 import { fakestoreAdapter } from './fakestore';
+import { tokopediaAdapter } from './tokopedia';
 import { createMockAdapter } from './mock.adapter';
 
 const mockShopee = process.env.MOCK_SHOPEE === 'true';
@@ -16,11 +17,15 @@ export const platformAdapters: Record<string, PlatformAdapter> = {
   // menunggu credential asli. Sudah terdaftar di PlatformParam enum
   // (contracts/api.yaml).
   fakestore: fakestoreAdapter,
+  // Belum ada (dan tidak akan ada di prototype ini) integrasi produksi
+  // Tokopedia -- selalu mock, tidak ada toggle MOCK_TOKOPEDIA seperti
+  // Shopee/TikTok karena memang tidak ada "versi asli" untuk ditoggle.
+  tokopedia: tokopediaAdapter,
 };
 
 /** Dipakai /api/platforms buat nandain platform yang belum ada credential asli. */
 export function isPlatformConfigured(platformName: string): boolean {
-  if (platformName === 'fakestore') return true;
+  if (platformName === 'fakestore' || platformName === 'tokopedia') return true;
   if (platformName === 'shopee') return mockShopee || Boolean(process.env.SHOPEE_PARTNER_ID);
   if (platformName === 'tiktok') return mockTiktok || Boolean(process.env.TIKTOK_APP_KEY);
   return false;

@@ -414,3 +414,39 @@ export async function runSlaEscalationCheck(now: Date = new Date()): Promise<Sla
 
   return { notified, skipped };
 }
+
+// ---------------------------------------------------------------------
+// Event subscriber — stock.updated dari sales-inventory (SRS §8.2):
+// "Sinkronisasi stok terbaru ke semua platform e-commerce terhubung".
+//
+// SRS bilang "semua platform terhubung", bukan "platform yang menjual
+// produk ini" -- jadi broadcast ke SETIAP platform is_connected=true yang
+// adapter-nya dukung updateStockOnPlatform, bukan filter per-listing.
+// (Ada tabel channel_listings di schema untuk pemetaan produk->listing
+// per platform, tapi tabel itu tidak pernah ditulis siapa pun di
+// codebase ini -- memakainya butuh flow "publish produk ke platform"
+// yang tidak ada dan di luar scope perubahan ini.)
+// ---------------------------------------------------------------------
+
+async function pushStockToConnectedPlatforms(productId: string, stockAfter: number): Promise<void> {
+  const platformRows = await repo.listPlatformRows();
+  const connected = platformRows.filter((row) => row.is_connected);
+
+  for (const row of connected) {
+    const adapter = platformAdapters[row.platform_name];
+    if (!adapter?.updateStockOnPlatform) continue; // platform ini belum dukung sync stok keluar -- lewati, jangan gagalkan yang lain
+
+    try {
+      const creds = await adapter.getValidAccessToken();
+      await adapter.updateStockOnPlatform(creds, productId, stockAfter);
+    } catch (err) {
+      // Gagal update stok ke 1 platform TIDAK boleh menghentikan platform
+      // lain -- pola sama dengan forwardStatusToPlatform() di atas.
+      console.error(`[ecommerce-sync] gagal update stok ke ${row.platform_name}:`, err);
+    }
+  }
+}
+
+subscribe(EVENTS.STOCK_UPDATED, async (payload) => {
+  await pushStockToConnectedPlatforms(payload.product_id, payload.stock_after);
+});
