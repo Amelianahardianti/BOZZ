@@ -4,7 +4,6 @@
 
 import {
   FiBarChart2,
-  FiBell,
   FiBox,
   FiClipboard,
   FiClock,
@@ -65,13 +64,12 @@ export const NAV_ITEMS: NavItem[] = [
   { path: ROUTES.products, label: 'Produk', roles: ['owner'], icon: FiBox, category: 'bisnis' },
   { path: ROUTES.platforms, label: 'Platform', roles: ['owner'], icon: FiLink, category: 'bisnis' },
   { path: ROUTES.reports, label: 'Laporan', roles: ['owner'], icon: FiBarChart2, category: 'bisnis' },
-  {
-    path: ROUTES.notifications,
-    label: 'Notifikasi',
-    roles: ['owner', 'kasir', 'pengepak'],
-    icon: FiBell,
-    category: 'lainnya',
-  },
+  // Notifikasi (P2 -- di luar scope MVP, keputusan PM): item nav sengaja
+  // dihapus dari sini (mengeluarkannya dari sidebar & bottom-nav
+  // sekaligus, keduanya me-render NAV_ITEMS apa adanya), TAPI
+  // ROUTES.notifications, halaman, komponen, API, dan hook-nya TETAP ADA
+  // -- lihat pages/notifications/, api/notifications/,
+  // shell/notifications/. Menghilangkan akses != menghapus fitur.
   { path: ROUTES.settings, label: 'Pengaturan', roles: ['owner'], icon: FiSettings, category: 'lainnya' },
 ]
 

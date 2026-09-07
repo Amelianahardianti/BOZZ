@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { FiBell, FiChevronDown, FiChevronsLeft, FiChevronsRight, FiLogOut, FiSettings } from 'react-icons/fi'
+import { FiChevronDown, FiChevronsLeft, FiChevronsRight, FiLogOut, FiSettings } from 'react-icons/fi'
 import { useAuth } from '../auth/useAuth'
-import { useUnreadNotifications } from '../notifications/useUnreadNotifications'
 import { getCachedStoreSettings, syncStoreSettingsCache } from '../offline/storeSettingsCache'
 import { NAV_ITEMS, ROUTES, type AppRole, type NavCategory, type NavItem } from '../routing/routes'
 
@@ -64,7 +63,6 @@ export function AppShell() {
   const { session, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const { count: unreadCount } = useUnreadNotifications()
   const storeSettings = useLiveQuery(() => getCachedStoreSettings(), []) ?? null
 
   const [isCollapsed, setIsCollapsed] = useState(readStoredCollapsed)
@@ -146,16 +144,7 @@ export function AppShell() {
               className={({ isActive }) => linkClasses(isActive, isCollapsed)}
             >
               <Icon aria-hidden="true" className="h-4.5 w-4.5 shrink-0" />
-              {!isCollapsed && (
-                <span className="inline-flex min-w-0 flex-1 items-center gap-1.5">
-                  <span className="truncate">{item.label}</span>
-                  {item.path === ROUTES.notifications && unreadCount > 0 && (
-                    <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700">
-                      {unreadCount}
-                    </span>
-                  )}
-                </span>
-              )}
+              {!isCollapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
             </NavLink>
           )
         })}
@@ -245,21 +234,16 @@ export function AppShell() {
 
             {session && (
               <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => navigate(ROUTES.notifications)}
-                  title="Notifikasi"
-                  aria-label={`Notifikasi${unreadCount > 0 ? `, ${unreadCount} belum dibaca` : ''}`}
-                  className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <FiBell aria-hidden="true" className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 rounded-full bg-red-100 px-1 text-[10px] font-semibold text-red-700">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-
+                {/* Notifikasi (P2 -- di luar scope MVP, keputusan PM): tombol
+                    lonceng akses-cepat, panggilan useUnreadNotifications() (dan
+                    badge unreadCount yang cuma dipakai olehnya), sengaja dihapus
+                    dari AppShell -- runtime-nya (poll 30 detik + fetch pas mount)
+                    tidak lagi jalan hanya karena shell ini di-mount. Source
+                    fitur-nya sendiri (hook, API, NotificationsPage, test) TETAP
+                    ADA (pages/notifications/, api/notifications/,
+                    shell/notifications/) buat dikembalikan gampang kalau MVP
+                    scope-nya berubah lagi -- cuma integrasinya di sini yang
+                    dicabut. */}
                 <div ref={accountMenuRef} className="relative">
                   <button
                     type="button"
@@ -336,14 +320,7 @@ export function AppShell() {
           return (
             <NavLink key={item.path} to={item.path} className={({ isActive }) => tabClasses(isActive)}>
               <Icon aria-hidden="true" className="h-4.5 w-4.5" />
-              <span className="relative">
-                {item.label}
-                {item.path === ROUTES.notifications && unreadCount > 0 && (
-                  <span className="absolute -right-2.5 -top-1 rounded-full bg-red-100 px-1 text-[10px] font-semibold text-red-700">
-                    {unreadCount}
-                  </span>
-                )}
-              </span>
+              <span>{item.label}</span>
             </NavLink>
           )
         })}

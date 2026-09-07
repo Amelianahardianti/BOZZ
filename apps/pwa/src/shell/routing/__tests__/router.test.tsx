@@ -176,17 +176,16 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
 })
 
 describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
-  it('Kasir cuma lihat menu Kasir & Notifikasi', async () => {
+  it('Kasir cuma lihat menu Kasir', async () => {
     renderAt(ROUTES.kasir, 'kasir')
     await screen.findByRole('searchbox')
 
     expect(screen.getAllByRole('link', { name: 'Kasir' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Staf' })).not.toBeInTheDocument()
   })
 
-  it('Pengepak cuma lihat menu Ticket Saya & Notifikasi', async () => {
+  it('Pengepak cuma lihat menu Ticket Saya', async () => {
     renderAt(ROUTES.tickets, 'pengepak')
     await screen.findByRole('heading', { name: 'Ticket Saya' })
 
@@ -270,25 +269,23 @@ describe('Alur "kena lempar ke login, abis login SELALU ke default role (bukan b
   })
 })
 
-describe('Badge notifikasi belum dibaca di nav (AppShell)', () => {
-  it('ada notifikasi belum dibaca -- badge nampilin jumlahnya di link "Notifikasi"', async () => {
-    mockedFetchNotifications.mockResolvedValue([
-      { id: '1', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
-      { id: '2', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
-    ])
+// Describe block "Badge notifikasi belum dibaca di nav (AppShell)" DIHAPUS
+// (bukan diskip) -- satu-satunya yang diuji di situ adalah link nav
+// "Notifikasi" (getAllByRole('link', { name: 'Notifikasi' })), yang sudah
+// sengaja dihapus dari NAV_ITEMS (routes.ts, keputusan PM: Notifikasi di
+// luar scope MVP).
+//
+// `vi.mock('../../../api/notifications', ...)` di atas TETAP dipertahankan
+// (bukan lagi buat mencegah AppShell nembak fetch beneran -- AppShell
+// SUDAH TIDAK memanggil useUnreadNotifications() sama sekali sekarang --
+// tapi supaya mock module-nya tetap konsisten/aman kalau nanti ada test
+// lain di file ini yang butuh). Test di bawah membuktikan runtime-nya
+// beneran mati, bukan cuma diasumsikan dari "route sudah dihapus".
+describe('Notification runtime TIDAK aktif di AppShell (di luar MVP scope)', () => {
+  it('AppShell mount (rute mana pun, role mana pun) TIDAK memicu fetchNotifications() sama sekali', async () => {
     renderAt(ROUTES.dashboard, 'owner')
     await screen.findByRole('heading', { name: 'Dashboard' })
 
-    expect((await screen.findAllByText('2')).length).toBeGreaterThan(0)
-  })
-
-  it('gak ada notifikasi belum dibaca -- gak ada badge sama sekali', async () => {
-    mockedFetchNotifications.mockResolvedValue([])
-    renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
-
-    // Notifikasi tetap ada sebagai link, cuma tanpa angka badge nempel.
-    expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
-    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    expect(mockedFetchNotifications).not.toHaveBeenCalled()
   })
 })
