@@ -6,8 +6,80 @@
 // palsu) supaya seluruh alur connect->callback->sync tetap teruji nyata,
 // cuma sumber datanya yang difiksasi.
 
+import { createHmac } from 'crypto';
 import type { PlatformAdapter, NormalizedOrder } from '../types';
 import { upsertPlatformToken } from '../repository';
+
+// ---------------------------------------------------------------------
+// Webhook demo (External E-commerce Order Simulator) -- dipakai bareng
+// createMockAdapter() (Shopee Mock, TikTok Mock) DAN diimpor ulang oleh
+// adapters/tokopedia/index.ts, supaya logic verifikasi+normalisasi cuma
+// ada SATU tempat, bukan diduplikasi 3x. Polanya niru
+// adapters/tiktok/index.ts (HMAC-SHA256, header Authorization) yang
+// SUDAH ada & teruji -- bedanya cuma kunci HMAC-nya satu secret bersama
+// (bukan App Key/Secret per-platform sungguhan, karena ini simulator,
+// bukan kredensial marketplace asli).
+// ---------------------------------------------------------------------
+
+function demoWebhookSecret(): string {
+  return process.env.MOCK_WEBHOOK_SECRET || 'dev-mock-webhook-secret-ganti-di-production';
+}
+
+/** Bentuk body yang dikirim External E-commerce Order Simulator. */
+export interface DemoWebhookPayload {
+  external_order_id: string;
+  buyer_username: string;
+  items: { external_item_id: string; item_name: string; qty: number; unit_price: number }[];
+}
+
+/**
+ * Verifikasi signature webhook demo -- HMAC-SHA256(secret, platformName + rawBody),
+ * dikirim simulator di header Authorization. `platformName` ikut masuk
+ * campuran supaya signature buat "shopee" tidak valid buat "tokopedia"
+ * walau body-nya persis sama.
+ */
+export function verifyDemoWebhookSignature(
+  platformName: string,
+  rawBody: string,
+  headers: Record<string, string | string[] | undefined>
+): boolean {
+  const signatureHeader = headers['authorization'];
+  const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
+  if (!signature) return false;
+  const expected = createHmac('sha256', demoWebhookSecret()).update(platformName + rawBody).digest('hex');
+  return signature === expected;
+}
+
+/**
+ * Ubah payload simulator jadi NormalizedOrder. `external_item_id` dikirim
+ * apa adanya sebagai `externalItemRef` -- product_id-nya SENGAJA TIDAK
+ * diisi di sini, itu tanggung jawab upsertExternalOrderRow() (mapping
+ * channel_listings / fallback SKU, Task 7B) yang jalan setelahnya.
+ * Simulator tidak pernah tahu/kirim internal product_id BOZZ.
+ */
+export function normalizeDemoWebhookPayload(payload: unknown): NormalizedOrder | null {
+  const body = payload as Partial<DemoWebhookPayload>;
+  if (!body?.external_order_id || !Array.isArray(body.items) || body.items.length === 0) return null;
+
+  const items = body.items
+    .filter((item): item is DemoWebhookPayload['items'][number] => Boolean(item?.external_item_id && item.qty > 0))
+    .map((item) => ({
+      externalItemRef: item.external_item_id,
+      itemName: item.item_name,
+      qty: item.qty,
+      unitPrice: item.unit_price,
+    }));
+  if (items.length === 0) return null;
+
+  return {
+    externalOrderId: body.external_order_id,
+    status: 'new',
+    totalAmount: items.reduce((sum, i) => sum + (i.unitPrice ?? 0) * i.qty, 0),
+    buyerUsername: body.buyer_username,
+    rawPayload: body,
+    items,
+  };
+}
 
 function buildFixtures(platformName: string): NormalizedOrder[] {
   const prefix = platformName.toUpperCase();
@@ -85,5 +157,9 @@ export function createMockAdapter(platformName: string, redirectUri: string): Mo
     },
 
     getMockStock: (productId) => mockStock.get(productId),
+
+    verifyWebhookSignature: (rawBody, headers) => verifyDemoWebhookSignature(platformName, rawBody, headers),
+
+    normalizeWebhookPayload: (payload) => normalizeDemoWebhookPayload(payload),
   };
 }

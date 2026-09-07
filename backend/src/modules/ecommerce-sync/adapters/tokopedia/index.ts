@@ -16,6 +16,10 @@
 
 import type { PlatformAdapter, NormalizedOrder } from '../../types';
 import { upsertPlatformToken } from '../../repository';
+// Verifikasi signature + normalisasi payload webhook demo (External
+// E-commerce Order Simulator) -- SATU implementasi dipakai bersama
+// createMockAdapter() (mock.adapter.ts), tidak diduplikasi di sini.
+import { verifyDemoWebhookSignature, normalizeDemoWebhookPayload } from '../mock.adapter';
 
 const PLATFORM_NAME = 'tokopedia';
 const SHOP_ID = 'MOCK-SHOP-TOKOPEDIA';
@@ -80,6 +84,10 @@ export const tokopediaAdapter: PlatformAdapter = {
   updateStockOnPlatform: async (_creds, productId, stockAfter) => {
     mockStock.set(productId, stockAfter);
   },
+
+  verifyWebhookSignature: (rawBody, headers) => verifyDemoWebhookSignature(PLATFORM_NAME, rawBody, headers),
+
+  normalizeWebhookPayload: (payload) => normalizeDemoWebhookPayload(payload),
 };
 
 /** Cuma buat test/inspeksi -- bukan bagian kontrak PlatformAdapter. */

@@ -55,6 +55,43 @@ export async function listPlatforms() {
   return known.map((name) => toPlatformDto(byName.get(name) ?? null, name));
 }
 
+// Katalog publik buat External E-commerce Order Simulator (repo terpisah,
+// lihat requirement §19) -- endpoint ini SENGAJA tidak requireAuth (lihat
+// routes.ts), jadi cuma platform yang benar-benar dikenal registry yang
+// boleh dipanggil (404 lewat getAdapter() kalau bukan).
+export async function getPlatformCatalog(platformName: string) {
+  getAdapter(platformName);
+  return repo.listCatalogForPlatform(platformName);
+}
+
+/**
+ * Versi publik listPlatforms() -- dipanggil External E-commerce Order
+ * Simulator buat tahu platform mana yang ADA (dari registry, bukan
+ * hardcoded) DAN punya minimal 1 produk yang bisa "dijual" (requirement
+ * §5: "hanya platform dengan minimal 1 valid mapped product"). Sengaja
+ * TIDAK reuse listPlatforms() -- itu mengekspos shop_id_external, status
+ * koneksi, dsb yang bukan urusan pihak luar; endpoint ini cuma balas nama
+ * platform, dihitung dari listCatalogForPlatform() yang sudah ada (bukan
+ * query baru).
+ *
+ * Cuma platform yang adapternya benar-benar dukung webhook (punya
+ * verifyWebhookSignature + normalizeWebhookPayload) yang muncul --
+ * simulator ini kirim order LEWAT webhook, jadi platform tanpa dukungan
+ * webhook (mis. FakeStore, adapter jaringan nyata poll-based ke
+ * fakestoreapi.com) pasti 409 kalau tetap ditampilkan sebagai pilihan.
+ */
+export async function listPublicPlatformsWithCatalog(): Promise<{ platform_name: string }[]> {
+  const known = Object.keys(platformAdapters);
+  const result: { platform_name: string }[] = [];
+  for (const name of known) {
+    const adapter = platformAdapters[name];
+    if (!adapter.verifyWebhookSignature || !adapter.normalizeWebhookPayload) continue;
+    const catalog = await repo.listCatalogForPlatform(name);
+    if (catalog.length > 0) result.push({ platform_name: name });
+  }
+  return result;
+}
+
 export function getAuthorizationUrl(platformName: string, state?: string) {
   return getAdapter(platformName).buildAuthorizationUrl(state);
 }
@@ -275,6 +312,64 @@ export async function updateCustomerDetail(id: string, input: repo.CustomerWrite
   const existing = await repo.findCustomerById(id);
   if (!existing) throw notFound('Customer tidak ditemukan.');
   return repo.updateCustomer(id, input);
+}
+
+// ---------------------------------------------------------------------
+// Dev/demo: injeksi order manual lewat terminal (BUKAN bagian
+// contracts/api.yaml -- lihat routes.ts). Tujuannya cuma buat demo:
+// buktikan pipeline order-masuk (dedup, SLA, customer-matching,
+// order.received) tanpa nunggu fixture tetap dari mock adapter.
+//
+// TETAP lewat upsertExternalOrder() yang sama persis dipakai sync/
+// webhook asli -- bukan jalan pintas yang nulis langsung ke DB. Product
+// dicari by NAMA (bukan SKU hafalan) lewat repo.findProductByName(),
+// lalu SKU-nya (kalau ada) dikirim sebagai externalItemRef -- product_id
+// di baris ordernya sendiri di-resolve otomatis oleh mekanisme fallback
+// SKU yang sudah ada di repository.ts (upsertExternalOrderRow).
+// ---------------------------------------------------------------------
+
+export interface InjectDemoOrderInput {
+  platformName: string;
+  buyer: string;
+  itemName: string;
+  qty: number;
+}
+
+export async function injectDemoOrder(input: InjectDemoOrderInput) {
+  getAdapter(input.platformName); // validasi platform dikenal -- 404 kalau tidak
+
+  const platformRow = await repo.findPlatformRow(input.platformName);
+  if (!platformRow || !platformRow.is_connected) {
+    throw conflict(`Platform "${input.platformName}" belum terhubung.`);
+  }
+
+  const product = await repo.findProductByName(input.itemName);
+  if (!product) {
+    throw notFound(`Produk "${input.itemName}" tidak ditemukan di katalog internal.`);
+  }
+
+  const unitPrice = Number(product.price);
+  const normalizedOrder: NormalizedOrder = {
+    externalOrderId: `DEMO-${Date.now()}`,
+    status: 'new',
+    totalAmount: unitPrice * input.qty,
+    buyerUsername: input.buyer,
+    rawPayload: { mock: true, injected: true, source: 'dev-inject-order' },
+    items: [
+      {
+        itemName: product.name,
+        qty: input.qty,
+        unitPrice,
+        externalItemRef: product.sku ?? undefined,
+      },
+    ],
+  };
+
+  const result = await upsertExternalOrder(platformRow.id, input.platformName, normalizedOrder);
+  return {
+    order: result.order,
+    matchedProduct: { id: product.id, name: product.name, sku: product.sku },
+  };
 }
 
 // ---------------------------------------------------------------------

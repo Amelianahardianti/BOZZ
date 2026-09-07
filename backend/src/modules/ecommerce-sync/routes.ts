@@ -71,6 +71,33 @@ router.post(
   })
 );
 
+// ---------- GET /api/platforms/public ----------
+// Publik (tanpa requireAuth), buat External E-commerce Order Simulator
+// tahu platform apa saja yang bisa dipilih -- TANPA login sebagai Owner
+// (requirement §16/§19). Cuma nama platform yang punya >=1 produk mapped,
+// bukan detail koneksi (itu tetap lewat GET /api/platforms yang lama,
+// owner-only, tidak diubah).
+router.get(
+  '/platforms/public',
+  asyncHandler(async (_req, res) => {
+    res.status(200).json(await service.listPublicPlatformsWithCatalog());
+  })
+);
+
+// ---------- GET /api/platforms/:platform/catalog ----------
+// Bukan bagian resmi contracts/api.yaml -- buat External E-commerce Order
+// Simulator (repo terpisah, requirement §19). SENGAJA publik (tanpa
+// requireAuth): simulator itu "aplikasi luar", tidak boleh disuruh login
+// sebagai Owner BOZZ cuma buat lihat katalog. Cuma baca (read-only), cuma
+// nampilin field yang memang perlu dilihat pihak luar (lihat repository.ts
+// listCatalogForPlatform) -- bukan expose data internal.
+router.get(
+  '/platforms/:platform/catalog',
+  asyncHandler(async (req, res) => {
+    res.status(200).json(await service.getPlatformCatalog(req.params.platform));
+  })
+);
+
 // ---------- POST /api/webhooks/:platform ----------
 // security: [] di api.yaml — publik dari sisi HTTP, tapi wajib verifikasi
 // signature (SRS 9.5). Balas 2xx cepat, proses async.
@@ -212,5 +239,34 @@ router.patch(
   asyncHandler(async (req, res) => {
     const body = customerWriteSchema.parse(req.body ?? {});
     res.status(200).json(await service.updateCustomerDetail(req.params.id, body));
+  })
+);
+
+// ---------- DEV/DEMO: POST /api/dev/inject-order ----------
+// Bukan bagian resmi contracts/api.yaml -- buat kebutuhan demo lomba:
+// simulasi order marketplace masuk lewat terminal (curl), tanpa nunggu
+// fixture tetap dari mock adapter. Tetap lewat upsertExternalOrder()
+// produksi asli (dedup, SLA, customer-matching, event order.received
+// semuanya tetap jalan) -- lihat service.injectDemoOrder().
+const injectOrderSchema = z.object({
+  platform: z.string().min(1),
+  buyer: z.string().min(1),
+  item_name: z.string().min(1),
+  qty: z.coerce.number().int().positive(),
+});
+
+router.post(
+  '/dev/inject-order',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const body = injectOrderSchema.parse(req.body ?? {});
+    const result = await service.injectDemoOrder({
+      platformName: body.platform,
+      buyer: body.buyer,
+      itemName: body.item_name,
+      qty: body.qty,
+    });
+    res.status(201).json(result);
   })
 );

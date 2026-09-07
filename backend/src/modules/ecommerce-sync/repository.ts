@@ -81,6 +81,44 @@ export async function markSyncResult(platformName: string, status: 'success' | '
   });
 }
 
+export interface CatalogEntry {
+  externalItemId: string;
+  name: string;
+  price: number;
+  stock: number;
+}
+
+/**
+ * Katalog produk BOZZ yang punya mapping valid ke satu platform --
+ * dipakai endpoint publik GET /platforms/:platform/catalog (External
+ * E-commerce Order Simulator). Sengaja HANYA field yang perlu ditampilkan
+ * ke "luar" (external_item_id, nama, harga, stok) -- internal product_id
+ * TIDAK ikut, supaya simulator tidak pernah punya akses ke ID internal
+ * BOZZ (lihat requirement §7/§19).
+ */
+export async function listCatalogForPlatform(platformName: string): Promise<CatalogEntry[]> {
+  const platform = await prisma.platforms.findFirst({ where: { platform_name: platformName } });
+  if (!platform) return [];
+
+  const rows = await prisma.channel_listings.findMany({
+    where: { platform_id: platform.id, products: { is_active: true } },
+    select: {
+      external_item_id: true,
+      products: { select: { name: true, price: true, stock_qty: true } },
+    },
+    orderBy: { external_item_id: 'asc' },
+  });
+
+  return rows
+    .filter((row): row is typeof row & { products: NonNullable<(typeof row)['products']> } => row.products !== null)
+    .map((row) => ({
+      externalItemId: row.external_item_id,
+      name: row.products.name,
+      price: Number(row.products.price),
+      stock: row.products.stock_qty,
+    }));
+}
+
 // ---------------------------------------------------------------------
 // Customers
 // ---------------------------------------------------------------------
@@ -97,6 +135,20 @@ export async function searchCustomers(query: string) {
   return prisma.customers.findMany({
     where: { OR: [{ name: { contains: query, mode: 'insensitive' } }, { phone: { contains: query } }] },
     take: 20,
+  });
+}
+
+// ---------------------------------------------------------------------
+// Products (dev/demo helper) -- BUKAN akses produk yang dipakai flow
+// produksi manapun di modul ini. Cuma buat POST /dev/inject-order
+// (lihat routes.ts) supaya presenter bisa ketik NAMA produk, bukan SKU
+// hafalan. `sku` hasil pencarian ini yang nanti dikirim sebagai
+// `externalItemRef` -- product_id-nya sendiri di-resolve otomatis oleh
+// mekanisme fallback SKU yang sudah ada di upsertExternalOrderRow().
+export async function findProductByName(name: string) {
+  return prisma.products.findFirst({
+    where: { name: { contains: name, mode: 'insensitive' }, is_active: true },
+    select: { id: true, name: true, sku: true, price: true },
   });
 }
 
