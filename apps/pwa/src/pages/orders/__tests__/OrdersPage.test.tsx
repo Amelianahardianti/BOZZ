@@ -1,23 +1,31 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ordersApi from '../../../api/orders'
 import type { OrderDetail } from '../../../api/orders'
 import * as platformsApi from '../../../api/platforms'
 import type { Platform } from '../../../api/platforms'
+import * as staffApi from '../../../api/staff'
+import type { Staff } from '../../../api/staff'
 import { ApiRequestError } from '../../../api/client'
 import { OrdersPage } from '../OrdersPage'
 
-// OrdersPage skrg pakai useNavigate() (tombol "Lihat Ticket") -- butuh
-// Router context biar gak throw, MemoryRouter polos cukup (bukan nguji
-// routing beneran, cuma nyediain context).
+// OrdersPage pakai useNavigate() (tombol "Lihat Ticket") -- butuh Router
+// context. Dipakai createMemoryRouter (bukan MemoryRouter polos) + rute
+// "/tickets" stub supaya test "Lihat Ticket" (Task 4, K.7) bisa
+// membuktikan navigasi beneran nyampe ke /tickets lewat
+// router.state.location.pathname, pola sama kayak router.test.tsx.
 function renderOrdersPage() {
-  return render(
-    <MemoryRouter>
-      <OrdersPage />
-    </MemoryRouter>
+  const router = createMemoryRouter(
+    [
+      { path: '/', element: <OrdersPage /> },
+      { path: '/tickets', element: <p>Halaman Ticket (stub)</p> },
+    ],
+    { initialEntries: ['/'] },
   )
+  render(<RouterProvider router={router} />)
+  return router
 }
 
 vi.mock('../../../api/orders', () => ({
@@ -26,11 +34,17 @@ vi.mock('../../../api/orders', () => ({
   updateOrderStatus: vi.fn(),
 }))
 vi.mock('../../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
+// Sebelum Task 4 gak di-mock (dibiarkan gagal diam-diam lewat .catch()
+// di OrdersPage) karena gak ada assertion yang butuh nama staf beneran.
+// Section "Status Packing" (Task 4) butuh nama pengepak yang benar,
+// jadi di-mock eksplisit di sini sekarang.
+vi.mock('../../../api/staff', () => ({ fetchStaff: vi.fn() }))
 
 const mockedFetchOrders = vi.mocked(ordersApi.fetchOrders)
 const mockedFetchOrderDetail = vi.mocked(ordersApi.fetchOrderDetail)
 const mockedUpdateStatus = vi.mocked(ordersApi.updateOrderStatus)
 const mockedFetchPlatforms = vi.mocked(platformsApi.fetchPlatforms)
+const mockedFetchStaff = vi.mocked(staffApi.fetchStaff)
 
 function buildPlatform(overrides: Partial<Platform> = {}): Platform {
   return {
@@ -66,9 +80,25 @@ function buildOrder(overrides: Partial<OrderDetail> = {}): OrderDetail {
   }
 }
 
+function buildStaff(overrides: Partial<Staff> = {}): Staff {
+  return {
+    id: 'pengepak-1',
+    name: 'konenggg',
+    email_or_username: 'konenggg',
+    role: 'pengepak',
+    phone: null,
+    is_active: true,
+    created_by: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockedFetchPlatforms.mockResolvedValue([buildPlatform()])
+  mockedFetchStaff.mockResolvedValue([])
 })
 
 describe('OrdersPage', () => {
@@ -168,7 +198,7 @@ describe('OrdersPage', () => {
       expect(screen.queryByRole('button', { name: /Mulai Diproses/ })).not.toBeInTheDocument()
     })
 
-    it('status Diproses, ticket sudah dibuat -- status ticket & tombol "Lihat Ticket" muncul, bukan "Buat Ticket"', async () => {
+    it('status Diproses, ticket sudah dibuat -- status packing & tombol "Lihat Ticket" muncul (section Status Packing, Task 4), bukan "Buat Ticket"', async () => {
       const order = buildOrder({
         status: 'processing',
         ticket: { id: 'ticket-1', status: 'assigned', assigned_to_user_id: 'pengepak-1' },
@@ -177,7 +207,9 @@ describe('OrdersPage', () => {
       mockedFetchOrderDetail.mockResolvedValue(order)
       renderOrdersPage()
 
-      expect(await screen.findByText('Menunggu Pengepak')).toBeInTheDocument()
+      expect(await screen.findByText('Menunggu Pengepakan')).toBeInTheDocument()
+      // Satu-satunya tombol "Lihat Ticket" -- badge/tombol dobel di guided
+      // action (Task 3) sudah dihapus, digantikan section Status Packing.
       expect(screen.getByRole('button', { name: /Lihat Ticket/ })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Buat Ticket/ })).not.toBeInTheDocument()
     })
@@ -210,6 +242,78 @@ describe('OrdersPage', () => {
         expect(screen.queryByRole('button', { name: /Tandai Selesai/ })).not.toBeInTheDocument()
       }
     )
+  })
+
+  describe('Status Packing di Order Card (Task 4)', () => {
+    it.each([
+      ['assigned', 'Menunggu Pengepakan'],
+      ['packing', 'Sedang Dikemas'],
+      ['packed', 'Packing Selesai'],
+      ['handed_over', 'Diserahkan'],
+    ] as const)('ticket status %s -- label "%s" tampil di section Status Packing', async (ticketStatus, label) => {
+      const order = buildOrder({
+        status: 'processing',
+        ticket: { id: 'ticket-1', status: ticketStatus, assigned_to_user_id: 'pengepak-1' },
+      })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      renderOrdersPage()
+
+      expect(await screen.findByText('Status Packing')).toBeInTheDocument()
+      expect(screen.getByText(label)).toBeInTheDocument()
+    })
+
+    it('nama pengepak yang ditugaskan tampil (resolve dari fetchStaff, sama kayak TicketsPage.tsx)', async () => {
+      const order = buildOrder({
+        status: 'processing',
+        ticket: { id: 'ticket-1', status: 'packing', assigned_to_user_id: 'pengepak-1' },
+      })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      mockedFetchStaff.mockResolvedValue([buildStaff({ id: 'pengepak-1', name: 'konenggg' })])
+      renderOrdersPage()
+
+      expect(await screen.findByText(/Pengepak:/)).toBeInTheDocument()
+      expect(await screen.findByText(/konenggg/)).toBeInTheDocument()
+    })
+
+    it('ticket belum ada pengepak (assigned_to_user_id null) -- fallback "Belum ditugaskan", BUKAN blank/error', async () => {
+      const order = buildOrder({
+        status: 'processing',
+        ticket: { id: 'ticket-1', status: 'assigned', assigned_to_user_id: null },
+      })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      renderOrdersPage()
+
+      expect(await screen.findByText(/Pengepak:/)).toBeInTheDocument()
+      expect(screen.getByText(/Belum ditugaskan/)).toBeInTheDocument()
+    })
+
+    it('klik "Lihat Ticket" navigasi ke halaman Ticket (/tickets, routing existing)', async () => {
+      const user = userEvent.setup()
+      const order = buildOrder({
+        status: 'processing',
+        ticket: { id: 'ticket-1', status: 'packed', assigned_to_user_id: 'pengepak-1' },
+      })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      const router = renderOrdersPage()
+
+      await user.click(await screen.findByRole('button', { name: /Lihat Ticket/ }))
+
+      expect(router.state.location.pathname).toBe('/tickets')
+    })
+
+    it('order BELUM punya ticket -- section "Status Packing" TIDAK muncul sama sekali', async () => {
+      const order = buildOrder({ status: 'processing', ticket: null })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      renderOrdersPage()
+
+      await screen.findByRole('button', { name: /Buat Ticket/ })
+      expect(screen.queryByText('Status Packing')).not.toBeInTheDocument()
+    })
   })
 
   it('order tanpa alamat pengiriman -- baris Alamat gak dirender sama sekali', async () => {
