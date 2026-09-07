@@ -90,6 +90,7 @@
 
 import 'dotenv/config';
 import { Pool } from 'pg';
+import { assertSafeTestDatabaseUrl } from '../src/shared/testDbSafety';
 
 /** Akun test: 3 dari seed-test-users.sql + kolam 44444444-...  */
 const AKUN_TEST = `(
@@ -127,6 +128,16 @@ const TRANSACTIONS_TO_DELETE = `(
 )`;
 
 export default async function bersihkanJejakRunSebelumnya(): Promise<void> {
+  // Guard PALING AWAL yang mungkin ada di seluruh run Jest -- globalSetup
+  // jalan SEKALI sebelum worker mana pun start, sebelum test file mana
+  // pun di-require, sebelum Pool DB manapun (termasuk yang di bawah ini)
+  // dibuat. Kalau ini throw, Jest gagal seluruhnya SEBELUM baris DELETE
+  // apa pun sempat dieksekusi -- "npx jest" langsung (tanpa
+  // DOTENV_CONFIG_PATH=.env.test) ikut kena, bukan cuma "npm test".
+  // Lihat src/shared/testDbSafety.ts untuk detail & guard kedua
+  // (defense-in-depth) di db.ts.
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 
   try {

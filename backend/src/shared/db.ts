@@ -11,6 +11,15 @@
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
+import { assertSafeTestDatabaseUrl, isRunningUnderJest } from './testDbSafety';
+
+// Defense-in-depth (lihat testDbSafety.ts) -- titik PALING DEKAT ke
+// koneksi database sesungguhnya, bukan cuma bergantung ke globalSetup
+// Jest. `isRunningUnderJest()` bikin guard ini TOTAL no-op di luar Jest
+// (npm run dev, produksi) -- JEST_WORKER_ID tidak pernah ada di sana.
+if (isRunningUnderJest()) {
+  assertSafeTestDatabaseUrl(process.env.DATABASE_URL);
+}
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

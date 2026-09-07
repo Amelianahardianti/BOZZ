@@ -91,7 +91,7 @@ function seedPengepak(overrides: Partial<User> = {}): User {
   return pengepak;
 }
 
-async function seedProduct(token: string, name = `Produk Ticket ${randomUUID()}`): Promise<string> {
+async function seedProduct(token: string, name = `TEST-PRODUCT-${randomUUID()}`): Promise<string> {
   const res = await request(app)
     .post('/api/products')
     .set('Authorization', `Bearer ${token}`)
@@ -108,7 +108,7 @@ describe('POST /api/tickets', () => {
   it('membuat ticket dari order dan menugaskannya ke satu Pengepak', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const productId = await seedProduct(token, 'Sabun Batang');
+    const productId = await seedProduct(token, 'TEST-Sabun Batang');
     const orderId = await bikinExternalOrder();
 
     const res = await createTicket(token, {
@@ -156,7 +156,7 @@ describe('POST /api/tickets', () => {
   it('membekukan nama produk dan menandai semua item belum dipacking', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const productId = await seedProduct(token, 'Nama Saat Ticket Dibuat');
+    const productId = await seedProduct(token, 'TEST-Nama Saat Ticket Dibuat');
 
     const res = await createTicket(token, {
       external_order_id: await bikinExternalOrder(),
@@ -166,7 +166,7 @@ describe('POST /api/tickets', () => {
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].product_id).toBe(productId);
-    expect(res.body.items[0].product_name_snapshot).toBe('Nama Saat Ticket Dibuat');
+    expect(res.body.items[0].product_name_snapshot).toBe('TEST-Nama Saat Ticket Dibuat');
     expect(res.body.items[0].qty).toBe(3);
     expect(res.body.items[0].is_packed).toBe(false);
     expect(res.body.items[0].id).toBeTruthy();
@@ -175,9 +175,9 @@ describe('POST /api/tickets', () => {
     await request(app)
       .patch(`/api/products/${productId}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Nama Baru Setelah Ticket' });
+      .send({ name: 'TEST-Nama Baru Setelah Ticket' });
 
-    expect(res.body.items[0].product_name_snapshot).toBe('Nama Saat Ticket Dibuat');
+    expect(res.body.items[0].product_name_snapshot).toBe('TEST-Nama Saat Ticket Dibuat');
   });
 
   it('tidak mengubah stok, karena stok order marketplace sudah dipotong lebih dulu', async () => {
