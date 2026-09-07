@@ -8,6 +8,7 @@ import { router as salesInventoryRouter } from './modules/sales-inventory';
 import { router as ecommerceSyncRouter } from './modules/ecommerce-sync';
 import { router as authProductRouter } from './modules/auth-product';
 import { router as dashboardRouter } from './modules/dashboard';
+import { router as reportsRouter } from './modules/reports';
 import { router as openapiRouter } from './shared/openapi';
 
 export const app = express();
@@ -49,6 +50,7 @@ app.use('/api', salesInventoryRouter);
 app.use('/api', ecommerceSyncRouter);
 app.use('/api', authProductRouter);
 app.use('/api', dashboardRouter);
+app.use('/api', reportsRouter);
 
 // Jaring terakhir untuk URL yang tidak cocok ke router mana pun. Tanpa
 // ini Express membalas halaman HTML "Cannot GET /..." — frontend yang
