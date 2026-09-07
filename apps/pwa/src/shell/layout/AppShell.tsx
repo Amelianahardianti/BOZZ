@@ -162,10 +162,7 @@ export function AppShell() {
         <div
           className={`mb-4 flex items-center gap-2 px-1 ${isCollapsed ? 'flex-col justify-center gap-2' : ''}`}
         >
-          {/* Placeholder logo BOZZ -- ganti <img src="/logo-bozz.svg" /> pas aset final tersedia. */}
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-brand-300 bg-brand-50 text-sm font-bold text-brand-700">
-            B
-          </div>
+          <img src="/logo-bozz.png" alt="BOZZ" className="h-9 w-9 shrink-0" />
           {!isCollapsed && (
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-slate-900">{storeSettings?.business_name || 'Toko'}</p>

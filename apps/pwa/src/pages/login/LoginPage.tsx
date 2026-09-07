@@ -68,10 +68,7 @@ export function LoginPage() {
       className="flex min-h-svh flex-col items-center justify-center bg-linear-to-br from-brand-100 via-white to-secondary-100 px-4 py-10"
     >
       <div className="mb-8 flex flex-col items-center gap-3 text-center">
-        {/* Placeholder logo BOZZ -- sama kayak AppShell, ganti <img src="/logo-bozz.svg" /> pas aset final tersedia. */}
-        <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-dashed border-brand-300 bg-brand-50 text-xl font-bold text-brand-700">
-          B
-        </div>
+        <img src="/logo-bozz.png" alt="BOZZ" className="h-14 w-14" />
         <div>
           <p className="text-xl font-bold text-slate-900">{storeSettings?.business_name || 'BOZZ'}</p>
           <p className="text-sm text-slate-500">Sistem POS Multi-Platform</p>
