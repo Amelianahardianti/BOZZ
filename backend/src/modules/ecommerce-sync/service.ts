@@ -274,7 +274,9 @@ async function forwardStatusToPlatform(platformId: string, externalOrderId: stri
     const creds = await adapter.getValidAccessToken();
     await adapter.updateOrderStatusOnPlatform(creds, externalOrderId, status);
   } catch (err) {
-    console.error(`[ecommerce-sync] gagal forward status ke ${platformRow.platform_name}:`, err);
+    if (process.env.NODE_ENV !== 'test') {
+      console.error(`[ecommerce-sync] gagal forward status ke ${platformRow.platform_name}:`, err);
+    }
   }
 }
 

@@ -50,10 +50,14 @@ subscribe(EVENTS.ORDER_RECEIVED, async (payload) => {
         // Gagal notifikasi TIDAK boleh menjatuhkan handler event ini --
         // event-bus.ts sudah menangkap error handler, tapi log di sini
         // biar jelas notifikasi siapa yang gagal, bukan cuma "listener gagal".
-        console.error(`[sales-inventory] gagal bikin notifikasi order baru untuk owner ${owner.id}`, err);
+        if (process.env.NODE_ENV !== 'test') {
+          console.error(`[sales-inventory] gagal bikin notifikasi order baru untuk owner ${owner.id}`, err);
+        }
       }
     }
   } catch (err) {
-    console.error(`[sales-inventory] gagal memproses order.received untuk ${payload.external_order_id}`, err);
+    if (process.env.NODE_ENV !== 'test') {
+      console.error(`[sales-inventory] gagal memproses order.received untuk ${payload.external_order_id}`, err);
+    }
   }
 });
