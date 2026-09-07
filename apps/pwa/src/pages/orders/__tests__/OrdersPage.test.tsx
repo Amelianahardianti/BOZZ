@@ -187,6 +187,59 @@ describe('OrdersPage', () => {
     await waitFor(() => expect(mockedUpdateStatus).toHaveBeenCalledWith('order-1', 'processing'))
   })
 
+  describe('Update Status gagal -- inline error, bukan window.alert (Task 6)', () => {
+    it('API gagal -- TIDAK window.alert, error tampil inline dekat tombol', async () => {
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+      const user = userEvent.setup()
+      const order = buildOrder({ status: 'new' })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      mockedUpdateStatus.mockRejectedValueOnce(new ApiRequestError(409, 'CONFLICT', 'Order berstatus "new" tidak bisa langsung diubah.'))
+      renderOrdersPage()
+
+      await user.click(await screen.findByRole('button', { name: /Mulai Diproses/ }))
+
+      expect(await screen.findByText('Order berstatus "new" tidak bisa langsung diubah.')).toBeInTheDocument()
+      expect(alertSpy).not.toHaveBeenCalled()
+      // Order tetap di kartu yang sama (tidak page reload/redirect) -- retry masih tersedia.
+      expect(screen.getByRole('button', { name: /Mulai Diproses/ })).toBeInTheDocument()
+
+      alertSpy.mockRestore()
+    })
+
+    it('error non-ApiRequestError -- fallback Bahasa Indonesia', async () => {
+      const user = userEvent.setup()
+      const order = buildOrder({ status: 'new' })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      mockedUpdateStatus.mockRejectedValueOnce(new Error('network boom'))
+      renderOrdersPage()
+
+      await user.click(await screen.findByRole('button', { name: /Mulai Diproses/ }))
+
+      expect(await screen.findByText('Gagal mengubah status pesanan.')).toBeInTheDocument()
+    })
+
+    it('retry -- klik lagi membersihkan error lama sebelum request baru, sukses menghapus errornya', async () => {
+      const user = userEvent.setup()
+      const order = buildOrder({ status: 'new' })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      mockedUpdateStatus
+        .mockRejectedValueOnce(new ApiRequestError(500, 'INTERNAL_ERROR', 'Server lagi down.'))
+        .mockResolvedValueOnce({ ...order, status: 'processing' })
+      renderOrdersPage()
+
+      await user.click(await screen.findByRole('button', { name: /Mulai Diproses/ }))
+      expect(await screen.findByText('Server lagi down.')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /Mulai Diproses/ }))
+
+      await waitFor(() => expect(mockedUpdateStatus).toHaveBeenCalledTimes(2))
+      expect(screen.queryByText('Server lagi down.')).not.toBeInTheDocument()
+    })
+  })
+
   describe('guided action per status (Task 3)', () => {
     it('status Diproses, belum ada ticket -- tombol "Buat Ticket" muncul, TIDAK ada "Mulai Diproses" lagi', async () => {
       const order = buildOrder({ status: 'processing', ticket: null })

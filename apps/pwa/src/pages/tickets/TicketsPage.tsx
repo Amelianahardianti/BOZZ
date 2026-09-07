@@ -81,6 +81,12 @@ function MyTicketsView() {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [busyTicketId, setBusyTicketId] = useState<string | null>(null)
+  // Task 6 -- inline error buat toggleItem/advanceStatus, ganti
+  // window.alert(). SATU state (bukan per-handler) cukup karena cuma satu
+  // action per ticket yang bisa in-flight sekaligus (busyTicketId juga
+  // singular) -- di-scope per ticketId (bukan string polos) karena banyak
+  // Ticket Card bisa tampil sekaligus di halaman ini.
+  const [actionError, setActionError] = useState<{ ticketId: string; message: string } | null>(null)
 
   useEffect(() => {
     fetchMyTickets()
@@ -93,11 +99,15 @@ function MyTicketsView() {
 
   async function toggleItem(ticket: Ticket, itemId: string, isPacked: boolean) {
     setBusyTicketId(ticket.id)
+    setActionError(null)
     try {
       const updated = await updateTicketProgress(ticket.id, { ticket_items: [{ id: itemId, is_packed: isPacked }] })
       setTickets((prev) => prev.map((t) => (t.id === ticket.id ? updated : t)))
     } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal memperbarui item ticket.')
+      setActionError({
+        ticketId: ticket.id,
+        message: err instanceof ApiRequestError ? err.message : 'Gagal memperbarui status packing.',
+      })
     } finally {
       setBusyTicketId(null)
     }
@@ -107,11 +117,15 @@ function MyTicketsView() {
     const next = NEXT_STATUS[ticket.status]
     if (!next) return
     setBusyTicketId(ticket.id)
+    setActionError(null)
     try {
       const updated = await updateTicketProgress(ticket.id, { status: next })
       setTickets((prev) => prev.map((t) => (t.id === ticket.id ? updated : t)))
     } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal mengubah status ticket.')
+      setActionError({
+        ticketId: ticket.id,
+        message: err instanceof ApiRequestError ? err.message : 'Gagal memperbarui status ticket.',
+      })
     } finally {
       setBusyTicketId(null)
     }
@@ -163,6 +177,10 @@ function MyTicketsView() {
                     </li>
                   ))}
                 </ul>
+
+                {actionError?.ticketId === ticket.id && (
+                  <p className="mt-2 text-sm text-red-600">{actionError.message}</p>
+                )}
 
                 <div className="mt-3 border-t border-slate-100 pt-3">
                   <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">

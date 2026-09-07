@@ -99,6 +99,10 @@ export function OrdersPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  // Task 6 -- inline error buat handleUpdateStatus, ganti window.alert().
+  // Di-scope per order (bukan satu string global) karena beberapa Order
+  // Card tampil sekaligus di halaman ini.
+  const [statusError, setStatusError] = useState<{ orderId: string; message: string } | null>(null)
 
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [creatingTicketFor, setCreatingTicketFor] = useState<OrderDetail | null>(null)
@@ -239,11 +243,21 @@ export function OrdersPage() {
 
   async function handleUpdateStatus(orderId: string, newStatus: ExternalOrderStatus) {
     setUpdatingOrderId(orderId)
+    // Bersihkan error lama SEBELUM request baru -- retry harus mulai dari
+    // tampilan bersih, bukan numpuk error sebelumnya (Task 6).
+    setStatusError(null)
     try {
       const updated = await updateOrderStatus(orderId, newStatus)
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: updated.status } : o)))
     } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal mengubah status order.')
+      // Task 6 -- ganti window.alert() (blocking) jadi inline error di
+      // dekat tombol action yang gagal. Di-scope per orderId (pola sama
+      // kayak updatingOrderId) karena banyak Order Card bisa tampil
+      // sekaligus -- tanpa scoping, gak jelas kartu mana yang gagal.
+      setStatusError({
+        orderId,
+        message: err instanceof ApiRequestError ? err.message : 'Gagal mengubah status pesanan.',
+      })
     } finally {
       setUpdatingOrderId(null)
     }
@@ -267,10 +281,13 @@ export function OrdersPage() {
 
     if (order.status === 'new') {
       return (
-        <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'processing')}>
-          Mulai Diproses
-          <FiArrowRight aria-hidden="true" className="h-4 w-4" />
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'processing')}>
+            Mulai Diproses
+            <FiArrowRight aria-hidden="true" className="h-4 w-4" />
+          </Button>
+          {statusError?.orderId === order.id && <p className="text-sm text-red-600">{statusError.message}</p>}
+        </div>
       )
     }
 
@@ -297,10 +314,13 @@ export function OrdersPage() {
     // sama sekali. Transition-nya (shipped -> completed) sama seperti yang
     // sudah ditegakkan backend.
     return (
-      <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'completed')}>
-        <FiCheckCircle aria-hidden="true" className="h-4 w-4" />
-        Tandai Selesai
-      </Button>
+      <div className="flex flex-col items-end gap-1">
+        <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'completed')}>
+          <FiCheckCircle aria-hidden="true" className="h-4 w-4" />
+          Tandai Selesai
+        </Button>
+        {statusError?.orderId === order.id && <p className="text-sm text-red-600">{statusError.message}</p>}
+      </div>
     )
   }
 
