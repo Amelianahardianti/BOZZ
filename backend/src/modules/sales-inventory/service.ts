@@ -967,6 +967,10 @@ export async function updateTicketProgress(input: {
     ticket_id: input.ticketId,
     status: input.status,
     items: input.items,
+    // Dipakai repository.ts sebagai adjusted_by_user_id di stock_adjustments
+    // kalau request ini yang mengubah ticket jadi handed_over (Task 9B) --
+    // pola sama seperti commitCheckout() memakai cashier_user_id.
+    actor_user_id: input.actor.id,
   });
 
   // Baru dipublikasikan setelah centangnya benar-benar tersimpan, dan

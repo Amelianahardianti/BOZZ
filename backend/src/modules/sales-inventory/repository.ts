@@ -1002,6 +1002,7 @@ export async function updateTicketProgress(input: {
   ticket_id: string;
   status?: TicketStatus;
   items?: { id: string; is_packed: boolean }[];
+  actor_user_id?: string | null;
 }): Promise<{ ticket: Ticket; baruSajaSelesai: boolean }> {
   if (bukanUuid(input.ticket_id)) {
     throw notFound('Ticket tidak ditemukan.');
@@ -1033,10 +1034,81 @@ export async function updateTicketProgress(input: {
 
     const semuaSelesaiSebelum = itemSekarang.every((i) => i.is_packed);
 
+    // Baris di atas (terkunci[0].status === TICKET_STATUS_TERMINAL) SUDAH
+    // menjamin ticket ini belum pernah handed_over sebelum request ini --
+    // jadi begitu input.status === 'handed_over' lolos sampai sini,
+    // itu PASTI transisi baru, bukan pengulangan (Task 9A, Phase C/H).
+    // Stok TIDAK PERNAH dikurangi di titik lain (order masuk/sync, ticket
+    // dibuat, assigned, packing, item dicentang, status packed) -- HANYA
+    // di sini, sekali per ticket, dalam SATU transaksi yang sama dengan
+    // update status ticket itu sendiri (bukan panggilan terpisah ke
+    // commitStockAdjustment(), yang akan buka transaksinya sendiri).
+    const iniHandover = input.status === TICKET_STATUS_TERMINAL;
+    let produkTerkunci: Map<string, ProdukTerkunci> = new Map();
+    if (iniHandover) {
+      // Tahap 1 lanjutan (masih "kunci + periksa, belum ada yang diubah")
+      // -- kunci baris produk pola PERSIS sama seperti commitCheckout()
+      // (kunciProduk: dedup + sort by id, hindari deadlock), lalu
+      // pastikan SEMUA item cukup stoknya SEBELUM ada satu pun yang
+      // ditulis. Kuantitas dari ticket_items.qty (BUKAN
+      // external_order_items.qty -- lihat laporan audit Task 9A D4/D5,
+      // ticket_items adalah catatan qty yang sebenarnya di-packing).
+      produkTerkunci = await kunciProduk(
+        tx,
+        itemSekarang.map((i) => i.product_id)
+      );
+      for (const item of itemSekarang) {
+        const product = produkTerkunci.get(item.product_id);
+        if (!product) {
+          throw notFound(`Produk ${item.product_id} tidak ditemukan.`);
+        }
+        if (product.stock_qty < item.qty) {
+          throw conflict(
+            `Stok "${product.name}" tinggal ${product.stock_qty}, tidak cukup untuk ${item.qty}. Ticket tidak bisa diserahkan.`
+          );
+        }
+      }
+    }
+
     // Tahap 2: baru tulis.
     const now = new Date();
     for (const { item, is_packed } of perubahanItem) {
       await tx.ticket_items.update({ where: { id: item.id }, data: { is_packed } });
+    }
+
+    if (iniHandover) {
+      // Semua item sudah dipastikan cukup stoknya di Tahap 1 -- di sini
+      // tinggal tulis, tidak ada pengecekan lagi yang bisa gagal di
+      // tengah jalan (all-or-nothing: kalau salah satu gagal, seluruh
+      // prisma.$transaction() ini rollback, termasuk centang checklist
+      // di atas dan update status ticket di bawah).
+      for (const item of itemSekarang) {
+        const product = produkTerkunci.get(item.product_id)!;
+        const stockBefore = product.stock_qty;
+        const stockAfter = stockBefore - item.qty;
+
+        await tx.products.update({
+          where: { id: product.id },
+          data: { stock_qty: stockAfter, updated_at: now },
+        });
+
+        await tx.stock_adjustments.create({
+          data: {
+            product_id: product.id,
+            change_qty: -item.qty,
+            // Nilai yang sudah tersedia di StockChangeReason (shared/event-bus.ts)
+            // & sudah dicadangkan sejak awal buat kasus ini -- lihat
+            // laporan audit Task 9A A3 (tidak perlu enum baru).
+            reason: 'external_order',
+            reference_type: 'external_order',
+            reference_id: input.ticket_id,
+            stock_before: stockBefore,
+            stock_after: stockAfter,
+            adjusted_by_user_id: input.actor_user_id ?? null,
+            created_at: now,
+          },
+        });
+      }
     }
 
     const dataTicket: Prisma.ticketsUncheckedUpdateInput = { updated_at: now };
