@@ -987,6 +987,16 @@ describe('PATCH /api/tickets/:id/status', () => {
     const pengepak = seedPengepak();
     const ticket = await seedTicket2Item(token, pengepak);
 
+    // Semua item harus dicentang dulu (guard Task 5) sebelum handed_over
+    // diterima -- lihat describe block "PATCH .../status -- guard
+    // handed_over" di bawah buat kasus item BELUM lengkap.
+    await ubahStatus(token, ticket.id, {
+      ticket_items: [
+        { id: ticket.items[0].id, is_packed: true },
+        { id: ticket.items[1].id, is_packed: true },
+      ],
+    });
+
     const selesai = await ubahStatus(token, ticket.id, { status: 'handed_over' });
     expect(selesai.status).toBe(200);
     expect(selesai.body.status).toBe('handed_over');
@@ -995,6 +1005,75 @@ describe('PATCH /api/tickets/:id/status', () => {
     const lagi = await ubahStatus(token, ticket.id, { status: 'packing' });
     expect(lagi.status).toBe(409);
     expect(lagi.body.error.code).toBe('CONFLICT');
+  });
+
+  describe('guard handed_over -- semua item harus sudah dikemas (Task 5)', () => {
+    it('item belum semua dicentang -> 409, status TIDAK berubah', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+      });
+
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+
+      const cek = await request(app)
+        .get('/api/tickets')
+        .query({ limit: 100 })
+        .set('Authorization', `Bearer ${token}`);
+      const masih = cek.body.find((t: { id: string }) => t.id === ticket.id);
+      expect(masih.status).not.toBe('handed_over');
+    });
+
+    it('tidak ada item yang dicentang sama sekali -> 409', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+    });
+
+    it('semua item sudah dicentang lebih dulu -> handed_over diterima (200)', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [
+          { id: ticket.items[0].id, is_packed: true },
+          { id: ticket.items[1].id, is_packed: true },
+        ],
+      });
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('handed_over');
+    });
+
+    it('centang item terakhir SEKALIGUS kirim status handed_over dalam satu request -> diterima', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+      });
+      const res = await ubahStatus(token, ticket.id, {
+        status: 'handed_over',
+        ticket_items: [{ id: ticket.items[1].id, is_packed: true }],
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('handed_over');
+    });
   });
 
   it('pengepak boleh mengerjakan ticketnya sendiri', async () => {

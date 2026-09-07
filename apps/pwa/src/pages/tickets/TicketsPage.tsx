@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { FiPackage } from 'react-icons/fi'
 import {
   assignTicket,
   fetchMyTickets,
@@ -23,6 +24,27 @@ import {
   StatusBadge,
   type BadgeTone,
 } from '../../shell/design-system'
+
+/**
+ * "Item" di sini = LINE ITEM ticket (satu baris produk), bukan quantity
+ * -- sama persis definisi yang sudah dipakai checklist existing (tiap
+ * baris `ticket.items` punya SATU checkbox `is_packed`, terlepas dari
+ * `qty`-nya berapa). "2/3" artinya 2 dari 3 baris produk sudah
+ * dicentang, konsisten sama backend (guard handed_over Task 5,
+ * service.ts) yang juga menghitung per baris, bukan per quantity.
+ */
+function packingProgress(ticket: Ticket) {
+  const total = ticket.items.length
+  const completed = ticket.items.filter((item) => item.is_packed).length
+  return {
+    completed,
+    total,
+    // total === 0 dijaga eksplisit -- jangan sampai 0/0 kebagi jadi NaN%
+    // ATAU malah dianggap "100% selesai" begitu saja.
+    percentage: total === 0 ? 0 : Math.round((completed / total) * 100),
+    allCompleted: total > 0 && completed === total,
+  }
+}
 
 const STATUS_LABEL: Record<TicketStatus, string> = {
   unassigned: 'Belum Ditugaskan',
@@ -110,6 +132,12 @@ function MyTicketsView() {
           {tickets.map((ticket) => {
             const next = NEXT_STATUS[ticket.status]
             const isBusy = busyTicketId === ticket.id
+            const progress = packingProgress(ticket)
+            // Cuma transition packed->handed_over yang digerbang checklist
+            // (Task 5) -- transition lain (assigned->packing,
+            // packing->packed) TIDAK disentuh, tetap perilaku existing,
+            // sesuai scope minimal Task 5 (bukan bangun ulang state machine).
+            const gatedByChecklist = next === 'handed_over' && !progress.allCompleted
             return (
               <Card key={ticket.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-3">
@@ -136,11 +164,39 @@ function MyTicketsView() {
                   ))}
                 </ul>
 
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+                    <FiPackage aria-hidden="true" className="h-3.5 w-3.5" />
+                    Progress Packing
+                  </p>
+                  {progress.total === 0 ? (
+                    <p className="mt-1 text-sm text-slate-500">Belum ada item untuk dikemas.</p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-sm font-medium text-slate-700">
+                        {progress.completed} / {progress.total} Item Dikemas
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className={`h-full rounded-full ${progress.allCompleted ? 'bg-green-500' : 'bg-brand-600'}`}
+                            style={{ width: `${progress.percentage}%` }}
+                          />
+                        </div>
+                        <span className="w-10 shrink-0 text-right text-xs text-slate-400">{progress.percentage}%</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 {next && (
-                  <div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
-                    <Button disabled={isBusy} onClick={() => advanceStatus(ticket)}>
+                  <div className="mt-3 flex flex-col items-end gap-1 border-t border-slate-100 pt-3">
+                    <Button disabled={isBusy || gatedByChecklist} onClick={() => advanceStatus(ticket)}>
                       Tandai {STATUS_LABEL[next]}
                     </Button>
+                    {gatedByChecklist && (
+                      <p className="text-xs text-slate-500">Checklist semua item terlebih dahulu.</p>
+                    )}
                   </div>
                 )}
               </Card>

@@ -946,6 +946,23 @@ export async function updateTicketProgress(input: {
     throw forbidden('Ticket ini bukan tugas kamu.');
   }
 
+  // Guard MINIMAL (Task 5, FR-SI-11) -- checklist item cuma ditegakkan di
+  // frontend (tombol "Tandai Diserahkan"), request API langsung ke
+  // endpoint ini TIDAK ada yang mencegah status lompat ke handed_over
+  // walau item belum semua dicentang. Dihitung dari state SETELAH
+  // centang di request ini ikut diterapkan (bukan cuma state lama),
+  // supaya request yang mencentang item terakhir SEKALIGUS mengirim
+  // status: 'handed_over' dalam satu panggilan tetap boleh lolos.
+  if (input.status === 'handed_over') {
+    const perubahan = new Map((input.items ?? []).map((i) => [i.id, i.is_packed]));
+    const semuaSudahDikemas =
+      ticket.items.length > 0 &&
+      ticket.items.every((item) => perubahan.get(item.id) ?? item.is_packed);
+    if (!semuaSudahDikemas) {
+      throw conflict('Semua item harus sudah dikemas sebelum ticket bisa diserahkan.');
+    }
+  }
+
   const { ticket: updated, baruSajaSelesai } = await repo.updateTicketProgress({
     ticket_id: input.ticketId,
     status: input.status,
