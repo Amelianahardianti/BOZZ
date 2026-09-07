@@ -5,9 +5,19 @@
 
 import ExcelJS from 'exceljs';
 import request from 'supertest';
+import { randomUUID } from 'crypto';
 import { app } from '../src/app';
 import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
 import { describe, expect, it, jest } from '@jest/globals';
+
+/** SKU unik per panggilan -- SKU tetap ('KCP-001', dst) pernah menumpuk
+ *  jadi produk sisa yang gak sempat kebersihin (lihat riwayat perbaikan
+ *  jest.global-setup.ts) dan bikin test re-create-nya bentrok 409/salah
+ *  hitung created/updated. Prefix tetap dipertahankan biar pesan error di
+ *  laporan tetap gampang dibaca kalau ada yang gagal. */
+function skuUnik(prefix: string): string {
+  return `${prefix}-${randomUUID()}`;
+}
 
 /** Rakit file .xlsx beneran di memori, biar yang diuji parser aslinya. */
 async function buildWorkbook(rows: unknown[][]): Promise<Buffer> {
@@ -67,7 +77,7 @@ const HEADER = ['Nama Produk', 'SKU', 'Kategori', 'Harga', 'Stok', 'Stok Minim',
 describe('POST /api/products/import', () => {
   it('membalas 202 dengan job_id, tidak menunggu prosesnya selesai', async () => {
     const token = ownerToken();
-    const file = await buildWorkbook([HEADER, ['Impor Cepat', 'IMP-CEPAT', 'Makanan', 9000, 3, 2, 'pcs']]);
+    const file = await buildWorkbook([HEADER, ['Impor Cepat', skuUnik('IMP-CEPAT'), 'Makanan', 9000, 3, 2, 'pcs']]);
 
     const res = await request(app)
       .post('/api/products/import')
@@ -86,10 +96,12 @@ describe('POST /api/products/import', () => {
 
   it('membuat produk baru dari isi file', async () => {
     const token = ownerToken();
+    const skuA = skuUnik('KCP');
+    const skuB = skuUnik('SBN');
     const file = await buildWorkbook([
       HEADER,
-      ['Kecap Manis', 'KCP-001', 'Makanan', 18500, 12, 4, 'botol'],
-      ['Sabun Cuci', 'SBN-001', '', 7500, 20, '', 'pcs'],
+      ['Kecap Manis', skuA, 'Makanan', 18500, 12, 4, 'botol'],
+      ['Sabun Cuci', skuB, '', 7500, 20, '', 'pcs'],
     ]);
 
     const laporan = await importAndWait(token, file);
@@ -103,7 +115,7 @@ describe('POST /api/products/import', () => {
 
     const cek = await request(app)
       .get('/api/products')
-      .query({ search: 'KCP-001' })
+      .query({ search: skuA })
       .set('Authorization', `Bearer ${token}`);
     const produk = cek.body.data[0];
     expect(produk.name).toBe('Kecap Manis');
@@ -116,7 +128,7 @@ describe('POST /api/products/import', () => {
     // kolom yang dikosongkan pakai default
     const kedua = await request(app)
       .get('/api/products')
-      .query({ search: 'SBN-001' })
+      .query({ search: skuB })
       .set('Authorization', `Bearer ${token}`);
     expect(kedua.body.data[0].low_stock_threshold).toBe(5);
     expect(kedua.body.data[0].category_id).toBeNull();
@@ -124,14 +136,15 @@ describe('POST /api/products/import', () => {
 
   it('memperbarui produk yang SKU-nya sudah ada, bukan bikin dobel', async () => {
     const token = ownerToken();
+    const sku = skuUnik('UPD');
     await importAndWait(
       token,
-      await buildWorkbook([HEADER, ['Nama Lama', 'UPD-001', '', 1000, 5, 2, 'pcs']])
+      await buildWorkbook([HEADER, ['Nama Lama', sku, '', 1000, 5, 2, 'pcs']])
     );
 
     const laporan = await importAndWait(
       token,
-      await buildWorkbook([HEADER, ['Nama Baru', 'UPD-001', 'Minuman', 2000, 5, 3, 'botol']])
+      await buildWorkbook([HEADER, ['Nama Baru', sku, 'Minuman', 2000, 5, 3, 'botol']])
     );
 
     expect(laporan.created).toBe(0);
@@ -139,7 +152,7 @@ describe('POST /api/products/import', () => {
 
     const cek = await request(app)
       .get('/api/products')
-      .query({ search: 'UPD-001' })
+      .query({ search: sku })
       .set('Authorization', `Bearer ${token}`);
     expect(cek.body.total).toBe(1);
     expect(cek.body.data[0].name).toBe('Nama Baru');
@@ -149,14 +162,15 @@ describe('POST /api/products/import', () => {
 
   it('tidak menimpa stok produk lama, tapi memberi tahu lewat warnings', async () => {
     const token = ownerToken();
+    const sku = skuUnik('STK');
     await importAndWait(
       token,
-      await buildWorkbook([HEADER, ['Stok Dijaga', 'STK-001', '', 1000, 7, 2, 'pcs']])
+      await buildWorkbook([HEADER, ['Stok Dijaga', sku, '', 1000, 7, 2, 'pcs']])
     );
 
     const laporan = await importAndWait(
       token,
-      await buildWorkbook([HEADER, ['Stok Dijaga', 'STK-001', '', 1000, 999, 2, 'pcs']])
+      await buildWorkbook([HEADER, ['Stok Dijaga', sku, '', 1000, 999, 2, 'pcs']])
     );
 
     expect(laporan.updated).toBe(1);
@@ -166,20 +180,22 @@ describe('POST /api/products/import', () => {
 
     const cek = await request(app)
       .get('/api/products')
-      .query({ search: 'STK-001' })
+      .query({ search: sku })
       .set('Authorization', `Bearer ${token}`);
     expect(cek.body.data[0].stock_qty).toBe(7);
   });
 
   it('meloloskan baris yang benar dan melaporkan nomor baris yang salah', async () => {
     const token = ownerToken();
+    const skuOk = skuUnik('OK');
+    const skuKtg = skuUnik('KTG');
     const file = await buildWorkbook([
       HEADER,
-      ['Baris Benar', 'OK-001', 'Makanan', 5000, 2, 1, 'pcs'], // baris 2
-      ['', 'KOSONG-001', '', 5000, 2, 1, 'pcs'], // baris 3: nama kosong
-      ['Harga Bukan Angka', 'NAN-001', '', 'sepuluh ribu', 2, 1, 'pcs'], // baris 4
-      ['Kategori Ngawur', 'KTG-001', 'Kategori Tidak Ada', 5000, 2, 1, 'pcs'], // baris 5
-      ['Harga Minus', 'MIN-001', '', -5000, 2, 1, 'pcs'], // baris 6
+      ['Baris Benar', skuOk, 'Makanan', 5000, 2, 1, 'pcs'], // baris 2
+      ['', skuUnik('KOSONG'), '', 5000, 2, 1, 'pcs'], // baris 3: nama kosong
+      ['Harga Bukan Angka', skuUnik('NAN'), '', 'sepuluh ribu', 2, 1, 'pcs'], // baris 4
+      ['Kategori Ngawur', skuKtg, 'Kategori Tidak Ada', 5000, 2, 1, 'pcs'], // baris 5
+      ['Harga Minus', skuUnik('MIN'), '', -5000, 2, 1, 'pcs'], // baris 6
     ]);
 
     const laporan = await importAndWait(token, file);
@@ -194,23 +210,24 @@ describe('POST /api/products/import', () => {
     // baris yang benar tetap masuk walau ada baris lain yang gagal
     const cek = await request(app)
       .get('/api/products')
-      .query({ search: 'OK-001' })
+      .query({ search: skuOk })
       .set('Authorization', `Bearer ${token}`);
     expect(cek.body.total).toBe(1);
 
     // baris yang gagal tidak menyisakan produk setengah jadi
     const gagal = await request(app)
       .get('/api/products')
-      .query({ search: 'KTG-001' })
+      .query({ search: skuKtg })
       .set('Authorization', `Bearer ${token}`);
     expect(gagal.body.total).toBe(0);
   });
 
   it('mengabaikan baris kosong dan mengenali nama kolom versi Inggris', async () => {
     const token = ownerToken();
+    const sku = skuUnik('ENG');
     const file = await buildWorkbook([
       ['Name', 'SKU', 'Price', 'Stock'],
-      ['Produk Inggris', 'ENG-001', 4000, 6],
+      ['Produk Inggris', sku, 4000, 6],
       [],
       ['', '', '', ''],
     ]);
@@ -247,7 +264,7 @@ describe('POST /api/products/import', () => {
 
   it('menolak file berekstensi .xls dengan saran menyimpan ulang', async () => {
     const token = ownerToken();
-    const file = await buildWorkbook([HEADER, ['Produk Xls', 'XLS-001', '', 1000, 1, 1, 'pcs']]);
+    const file = await buildWorkbook([HEADER, ['Produk Xls', skuUnik('XLS'), '', 1000, 1, 1, 'pcs']]);
 
     const res = await request(app)
       .post('/api/products/import')
@@ -285,7 +302,7 @@ describe('POST /api/products/import', () => {
 
   it('melarang role selain owner mengimpor produk', async () => {
     const token = kasirToken();
-    const file = await buildWorkbook([HEADER, ['Dari Kasir', 'KSR-001', '', 1000, 1, 1, 'pcs']]);
+    const file = await buildWorkbook([HEADER, ['Dari Kasir', skuUnik('KSR'), '', 1000, 1, 1, 'pcs']]);
 
     const res = await request(app)
       .post('/api/products/import')

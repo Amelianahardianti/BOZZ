@@ -181,6 +181,12 @@ describe('POST /api/platforms/:platform/sync — jalur sukses', () => {
   });
 
   it('runSync() gagal (adapter error) -> last_sync_status dicatat "failed", request HTTP tetap sudah 202 sebelumnya', async () => {
+    // Kegagalan ini SENGAJA dipicu (bukan bug) -- runSync() memang
+    // mencatat error ini lewat console.error (service.ts) sebelum
+    // melanjutkan. Di-spy lokal cuma buat test ini, biar noise-nya gak
+    // ikut ke terminal tapi tetap kebukti beneran ke-log.
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     mockedRepo.findPlatformRow.mockResolvedValue(CONNECTED_ROW);
     fakestoreAdapterMock.fetchRecentOrders.mockRejectedValue(new Error('FakeStoreAPI timeout'));
 
@@ -195,6 +201,12 @@ describe('POST /api/platforms/:platform/sync — jalur sukses', () => {
 
     expect(mockedRepo.markSyncResult).toHaveBeenCalledWith('fakestore', 'failed');
     expect(mockedRepo.upsertExternalOrderRow).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ecommerce-sync] sync fakestore gagal'),
+      expect.any(Error)
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 });
 

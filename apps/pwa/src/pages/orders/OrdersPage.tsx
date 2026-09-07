@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { FiArrowRight, FiCheckCircle, FiEye, FiPackage } from 'react-icons/fi'
 import {
   fetchOrderDetail,
   fetchOrders,
@@ -29,11 +30,6 @@ import {
 } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
 
-// Order yang masih aktif (belum selesai/batal) yang boleh dibikinkan
-// ticket packing -- order yang sudah completed/cancelled gak relevan lagi
-// buat dikemas.
-const TICKETABLE_STATUSES: ExternalOrderStatus[] = ['new', 'processing']
-
 const STATUS_LABEL: Record<ExternalOrderStatus, string> = {
   new: 'Baru',
   processing: 'Diproses',
@@ -52,10 +48,18 @@ const STATUS_TONE: Record<ExternalOrderStatus, BadgeTone> = {
 
 const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
   unassigned: 'Belum ditugaskan',
-  assigned: 'Sudah ditugaskan',
+  assigned: 'Menunggu Pengepak',
   packing: 'Sedang dikemas',
   packed: 'Sudah dikemas',
   handed_over: 'Sudah diserahkan',
+}
+
+const TICKET_STATUS_TONE: Record<TicketStatus, BadgeTone> = {
+  unassigned: 'neutral',
+  assigned: 'warning',
+  packing: 'info',
+  packed: 'info',
+  handed_over: 'success',
 }
 
 // Label UI "Jenis Pengiriman" -- SlaType/SLA_LABEL (nama variabel & key)
@@ -235,6 +239,65 @@ export function OrdersPage() {
     }
   }
 
+  // Guided action (Task 3) -- GANTI dropdown status bebas yang sebelumnya
+  // bisa langsung "Completed -> New" atau "New -> Completed" (membingungkan
+  // & berisiko buat demo). Cuma satu action yang relevan buat status
+  // SEKARANG yang ditampilkan, urutan majunya SAMA PERSIS sama
+  // ALLOWED_STATUS_TRANSITIONS di backend (service.ts) -- backend TETAP
+  // menegakkan aturan yang sama, tombol ini cuma "guided" di UI, bukan
+  // satu-satunya proteksi.
+  function renderGuidedAction(order: OrderDetail) {
+    const isUpdating = updatingOrderId === order.id
+
+    if (order.status === 'completed' || order.status === 'cancelled') {
+      // Status terminal -- StatusBadge di header kartu sudah cukup,
+      // sengaja TIDAK ada action apa pun lagi di sini.
+      return null
+    }
+
+    if (order.status === 'new') {
+      return (
+        <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'processing')}>
+          Mulai Diproses
+          <FiArrowRight aria-hidden="true" className="h-4 w-4" />
+        </Button>
+      )
+    }
+
+    if (order.status === 'processing') {
+      if (order.ticket === null) {
+        return (
+          <Button variant="secondary" onClick={() => openCreateTicket(order)}>
+            <FiPackage aria-hidden="true" className="h-4 w-4" />
+            Buat Ticket
+          </Button>
+        )
+      }
+      return (
+        <div className="flex items-center gap-2">
+          <StatusBadge label={TICKET_STATUS_LABEL[order.ticket.status]} tone={TICKET_STATUS_TONE[order.ticket.status]} />
+          <Button variant="secondary" onClick={() => navigate(ROUTES.tickets)}>
+            <FiEye aria-hidden="true" className="h-4 w-4" />
+            Lihat Ticket
+          </Button>
+        </div>
+      )
+    }
+
+    // shipped -- belum ada mockup eksplisit di brief Task 3 (fokusnya di
+    // new/processing/terminal), tapi data order 'shipped' beneran ada
+    // (mis. hasil sync marketplace) -- tetap dikasih SATU action lanjutan
+    // yang konsisten sama pola guided lainnya, bukan dibiarkan tanpa aksi
+    // sama sekali. Transition-nya (shipped -> completed) sama seperti yang
+    // sudah ditegakkan backend.
+    return (
+      <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'completed')}>
+        <FiCheckCircle aria-hidden="true" className="h-4 w-4" />
+        Tandai Selesai
+      </Button>
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -354,34 +417,7 @@ export function OrdersPage() {
                   <p className="font-semibold text-slate-900">
                     Total: {order.total_amount !== null ? formatRupiah(order.total_amount) : '-'}
                   </p>
-                  <select
-                    aria-label="Ubah status order"
-                    value={order.status}
-                    disabled={updatingOrderId === order.id}
-                    onChange={(event) => handleUpdateStatus(order.id, event.target.value as ExternalOrderStatus)}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                  >
-                    {(Object.keys(STATUS_LABEL) as ExternalOrderStatus[]).map((status) => (
-                      <option key={status} value={status}>
-                        {STATUS_LABEL[status]}
-                      </option>
-                    ))}
-                  </select>
-                  {order.ticket === null && TICKETABLE_STATUSES.includes(order.status) && (
-                    <Button variant="secondary" onClick={() => openCreateTicket(order)}>
-                      Buat Ticket
-                    </Button>
-                  )}
-                  {order.ticket !== null && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium text-green-600">
-                        Ticket: {TICKET_STATUS_LABEL[order.ticket.status]}
-                      </span>
-                      <Button variant="secondary" onClick={() => navigate(ROUTES.tickets)}>
-                        Lihat Ticket
-                      </Button>
-                    </div>
-                  )}
+                  {renderGuidedAction(order)}
                 </div>
               </div>
             </Card>

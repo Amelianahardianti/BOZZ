@@ -4,6 +4,7 @@
 // list (search/filter/pagination), create, detail, dan update.
 
 import request from 'supertest';
+import { randomUUID } from 'crypto';
 import { app } from '../src/app';
 import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
 import { PRODUK_ROTI_ID } from './helpers/fixtures';
@@ -141,8 +142,12 @@ describe('GET /api/products', () => {
 describe('POST /api/products', () => {
   it('membuat produk baru dengan default low_stock_threshold 5', async () => {
     const token = ownerToken();
+    // SKU/nama diacak per run (randomUUID) -- SKU tetap ('KPS-001', dst)
+    // pernah bentrok permanen sama produk ASLI/manual bernama sama yang
+    // dibuat lewat UI di database shared ini (bukan cuma sesama test run).
+    const sku = `KPS-${randomUUID()}`;
 
-    const res = await createProduct(token, { name: 'Kopi Sachet', sku: 'KPS-001', price: 2500 });
+    const res = await createProduct(token, { name: 'Kopi Sachet', sku, price: 2500 });
 
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('Kopi Sachet');
@@ -155,9 +160,12 @@ describe('POST /api/products', () => {
 
   it('menolak SKU yang sudah dipakai produk lain', async () => {
     const token = ownerToken();
-    await createProduct(token, { name: 'Produk SKU A', sku: 'DOBEL-01' });
+    const sku = `DOBEL-${randomUUID()}`;
+    await createProduct(token, { name: 'Produk SKU A', sku });
 
-    const res = await createProduct(token, { name: 'Produk SKU B', sku: 'dobel-01' });
+    // Huruf kecil semua -- membuktikan pengecekan duplikat case-insensitive,
+    // bukan cuma exact string match.
+    const res = await createProduct(token, { name: 'Produk SKU B', sku: sku.toLowerCase() });
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
@@ -276,19 +284,21 @@ describe('PATCH /api/products/:id', () => {
 
   it('membiarkan produk memakai SKU-nya sendiri, tapi menolak SKU milik produk lain', async () => {
     const token = ownerToken();
-    const a = await createProduct(token, { name: 'Produk Patch A', sku: 'PATCH-A' });
-    const b = await createProduct(token, { name: 'Produk Patch B', sku: 'PATCH-B' });
+    const skuA = `PATCH-A-${randomUUID()}`;
+    const skuB = `PATCH-B-${randomUUID()}`;
+    const a = await createProduct(token, { name: 'Produk Patch A', sku: skuA });
+    const b = await createProduct(token, { name: 'Produk Patch B', sku: skuB });
 
     const sendiri = await request(app)
       .patch(`/api/products/${a.body.id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ sku: 'PATCH-A', name: 'Produk Patch A1' });
+      .send({ sku: skuA, name: 'Produk Patch A1' });
     expect(sendiri.status).toBe(200);
 
     const bentrok = await request(app)
       .patch(`/api/products/${a.body.id}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ sku: 'PATCH-B' });
+      .send({ sku: skuB });
     expect(bentrok.status).toBe(409);
     expect(bentrok.body.error.message).toContain(b.body.name);
   });

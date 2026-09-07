@@ -139,21 +139,77 @@ describe('OrdersPage', () => {
     )
   })
 
-  it('ubah status langsung dari dropdown di kartu -- manggil updateOrderStatus', async () => {
+  it('status Baru -- tombol "Mulai Diproses" manggil updateOrderStatus(id, processing)', async () => {
     const user = userEvent.setup()
-    const order = buildOrder()
+    const order = buildOrder({ status: 'new' })
     mockedFetchOrders.mockResolvedValue([order])
     mockedFetchOrderDetail.mockResolvedValue(order)
     mockedUpdateStatus.mockResolvedValue({ ...order, status: 'processing' })
     renderOrdersPage()
     await screen.findByText('SP-991', { exact: false })
 
-    // aria-label ditambah di select ini (ProductsPage-style consistency
-    // audit) -- sebelumnya select ini gak punya accessible name sama
-    // sekali, dicari lewat name: ''. Sekarang dicari lewat label barunya.
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Ubah status order' }), 'processing')
+    // Dropdown bebas (bisa Completed->New atau New->Completed langsung)
+    // DIHAPUS Task 3 -- diganti guided action, cuma SATU tombol yang
+    // relevan buat status saat ini.
+    expect(screen.queryByRole('combobox', { name: 'Ubah status order' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Mulai Diproses/ }))
 
     await waitFor(() => expect(mockedUpdateStatus).toHaveBeenCalledWith('order-1', 'processing'))
+  })
+
+  describe('guided action per status (Task 3)', () => {
+    it('status Diproses, belum ada ticket -- tombol "Buat Ticket" muncul, TIDAK ada "Mulai Diproses" lagi', async () => {
+      const order = buildOrder({ status: 'processing', ticket: null })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      renderOrdersPage()
+
+      expect(await screen.findByRole('button', { name: /Buat Ticket/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Mulai Diproses/ })).not.toBeInTheDocument()
+    })
+
+    it('status Diproses, ticket sudah dibuat -- status ticket & tombol "Lihat Ticket" muncul, bukan "Buat Ticket"', async () => {
+      const order = buildOrder({
+        status: 'processing',
+        ticket: { id: 'ticket-1', status: 'assigned', assigned_to_user_id: 'pengepak-1' },
+      })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      renderOrdersPage()
+
+      expect(await screen.findByText('Menunggu Pengepak')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Lihat Ticket/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Buat Ticket/ })).not.toBeInTheDocument()
+    })
+
+    it('status Dikirim -- tombol "Tandai Selesai" manggil updateOrderStatus(id, completed)', async () => {
+      const user = userEvent.setup()
+      const order = buildOrder({ status: 'shipped' })
+      mockedFetchOrders.mockResolvedValue([order])
+      mockedFetchOrderDetail.mockResolvedValue(order)
+      mockedUpdateStatus.mockResolvedValue({ ...order, status: 'completed' })
+      renderOrdersPage()
+
+      await user.click(await screen.findByRole('button', { name: /Tandai Selesai/ }))
+
+      await waitFor(() => expect(mockedUpdateStatus).toHaveBeenCalledWith('order-1', 'completed'))
+    })
+
+    it.each(['completed', 'cancelled'] as const)(
+      'status terminal (%s) -- TIDAK ada action apa pun (completion disabled)',
+      async (status) => {
+        const order = buildOrder({ status })
+        mockedFetchOrders.mockResolvedValue([order])
+        mockedFetchOrderDetail.mockResolvedValue(order)
+        renderOrdersPage()
+        await screen.findByText('SP-991', { exact: false })
+
+        expect(screen.queryByRole('button', { name: /Mulai Diproses/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Buat Ticket/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Lihat Ticket/ })).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: /Tandai Selesai/ })).not.toBeInTheDocument()
+      }
+    )
   })
 
   it('order tanpa alamat pengiriman -- baris Alamat gak dirender sama sekali', async () => {

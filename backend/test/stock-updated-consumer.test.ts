@@ -148,6 +148,11 @@ describe('EVENTS.STOCK_UPDATED consumer (service.ts, production, tidak di-mock)'
   });
 
   it('TEST 5 — Shopee Mock gagal update -> Tokopedia Mock TETAP menerima update (kegagalan 1 platform tidak menghentikan yang lain)', async () => {
+    // "Shopee API down" SENGAJA dipicu -- pushStockToConnectedPlatforms
+    // memang mencatatnya lewat console.error (service.ts) sebelum lanjut
+    // ke platform berikutnya. Di-spy lokal cuma buat test ini.
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     adapters.shopee.updateStockOnPlatform!.mockRejectedValueOnce(new Error('Shopee API down'));
     mockedRepo.listPlatformRows.mockResolvedValue([
       buildPlatformRow({ platform_name: 'shopee', is_connected: true }),
@@ -159,6 +164,12 @@ describe('EVENTS.STOCK_UPDATED consumer (service.ts, production, tidak di-mock)'
 
     expect(adapters.shopee.updateStockOnPlatform).toHaveBeenCalledTimes(1);
     expect(adapters.tokopedia.updateStockOnPlatform).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ecommerce-sync] gagal update stok ke shopee'),
+      expect.any(Error)
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 
   it('platform belum connect (is_connected=false) -> TIDAK dipanggil', async () => {

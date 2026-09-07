@@ -179,6 +179,26 @@ export async function getOrderDetail(id: string) {
   return order;
 }
 
+// Validasi transition KECIL & TIDAK BERISIKO (bukan state machine besar,
+// per keputusan MVP Task 3 -- "guided action" di frontend sudah cukup
+// buat UX, tapi backend TETAP gak boleh cuma mengandalkan itu, lihat
+// laporan audit: PATCH /orders/:id/status sebelumnya menerima status
+// APA PUN dari status APA PUN tanpa validasi sama sekali). Cuma satu
+// aturan: order boleh maju satu langkah (new->processing->shipped->
+// completed) atau dibatalkan dari status aktif mana pun, TAPI status
+// terminal (completed/cancelled) TIDAK BISA diubah lagi ke apa pun --
+// itu persis skenario "Completed -> New" yang bikin demo membingungkan.
+// TIDAK ada UI yang expose "Batalkan" sekarang (di luar scope brief ini),
+// tapi endpoint tetap mengizinkannya buat jalur lain (mis. webhook/sync
+// marketplace yang melaporkan pembatalan dari pembeli).
+const ALLOWED_STATUS_TRANSITIONS: Record<string, string[]> = {
+  new: ['processing', 'cancelled'],
+  processing: ['shipped', 'cancelled'],
+  shipped: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+};
+
 /**
  * Update status order (jalur MANUAL — Owner override lewat PATCH
  * /orders/:id/status) lalu emit order.status.changed. Forward-ke-platform
@@ -190,6 +210,11 @@ export async function getOrderDetail(id: string) {
 export async function updateOrderStatus(id: string, status: string) {
   const existing = await repo.getExternalOrderDetailRow(id);
   if (!existing) throw notFound('Order tidak ditemukan.');
+
+  const allowedNext = ALLOWED_STATUS_TRANSITIONS[existing.status] ?? [];
+  if (existing.status !== status && !allowedNext.includes(status)) {
+    throw conflict(`Order berstatus "${existing.status}" tidak bisa langsung diubah ke "${status}".`);
+  }
 
   const updated = await repo.updateExternalOrderStatusRow(id, status);
 

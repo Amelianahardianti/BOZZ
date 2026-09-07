@@ -8,6 +8,8 @@ import * as ordersApi from '../../../api/orders'
 import * as platformsApi from '../../../api/platforms'
 import { AuthProvider } from '../../auth/AuthProvider'
 import { STORAGE_KEY, type AuthSession } from '../../auth/auth-context'
+import * as productCache from '../../offline/productCache'
+import * as storeSettingsCache from '../../offline/storeSettingsCache'
 import { routeConfig } from '../router'
 import { NAV_ITEMS, ROUTES, type AppRole } from '../routes'
 
@@ -21,10 +23,28 @@ vi.mock('../../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
 // alasan notifications di atas.
 vi.mock('../../../api/orders', () => ({ fetchOrders: vi.fn() }))
 vi.mock('../../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
+// AppShell & KasirPage (rute /kasir, ikut disentuh it.each(NAV_ITEMS) di
+// bawah) manggil syncProductCache()/syncStoreSettingsCache() pas mount,
+// yang di baliknya nembak fetch() beneran ke API produk/store-settings --
+// TIDAK ada hubungannya sama yang diuji file ini (routing/RBAC). Cuma
+// fungsi sync-nya yang di-mock (tetap nembak network kalau tidak);
+// getCachedProducts/getCachedCategories/getCachedStoreSettings TETAP versi
+// asli (baca IndexedDB lewat fake-indexeddb, bukan network) supaya
+// useLiveQuery() di AppShell/KasirPage tidak berubah perilaku.
+vi.mock('../../offline/productCache', async () => {
+  const actual = await vi.importActual<typeof import('../../offline/productCache')>('../../offline/productCache')
+  return { ...actual, syncProductCache: vi.fn() }
+})
+vi.mock('../../offline/storeSettingsCache', async () => {
+  const actual = await vi.importActual<typeof import('../../offline/storeSettingsCache')>('../../offline/storeSettingsCache')
+  return { ...actual, syncStoreSettingsCache: vi.fn() }
+})
 
 const mockedFetchNotifications = vi.mocked(notificationsApi.fetchNotifications)
 const mockedFetchOrders = vi.mocked(ordersApi.fetchOrders)
 const mockedFetchPlatforms = vi.mocked(platformsApi.fetchPlatforms)
+const mockedSyncProductCache = vi.mocked(productCache.syncProductCache)
+const mockedSyncStoreSettingsCache = vi.mocked(storeSettingsCache.syncStoreSettingsCache)
 
 function sessionFor(role: AppRole): AuthSession {
   return {
@@ -39,6 +59,8 @@ beforeEach(() => {
   mockedFetchNotifications.mockResolvedValue([])
   mockedFetchOrders.mockResolvedValue([])
   mockedFetchPlatforms.mockResolvedValue([])
+  mockedSyncProductCache.mockResolvedValue(undefined)
+  mockedSyncStoreSettingsCache.mockResolvedValue(undefined)
 })
 
 /**

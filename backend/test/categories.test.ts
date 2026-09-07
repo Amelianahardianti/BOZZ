@@ -3,6 +3,7 @@
 // Menguji endpoint GET & POST /api/categories sesuai contracts/api.yaml.
 
 import request from 'supertest';
+import { randomUUID } from 'crypto';
 import { app } from '../src/app';
 import { OWNER_ID, kasirToken, ownerToken } from './helpers/auth';
 import { describe, expect, it, jest } from '@jest/globals';
@@ -33,20 +34,29 @@ describe('GET /api/categories', () => {
 describe('POST /api/categories', () => {
   it('membuat kategori baru dan mencatat pembuatnya', async () => {
     const token = ownerToken();
+    // Nama diacak per run -- nama tetap ('Snack Kering') pernah bentrok
+    // permanen sama kategori ASLI/manual bernama sama yang sudah dipakai
+    // produk nyata di database shared ini (categories.name @unique, dan
+    // kategori yang masih dipakai produk lain gak akan pernah dihapus
+    // cleanup -- lihat jest.global-setup.ts). Spasi ganda di tengah tetap
+    // disengaja (bukan cuma leading/trailing) -- servicenya collapse
+    // /\s+/g jadi satu spasi, bukan cuma .trim().
+    const nama = `Snack Kering ${randomUUID()}`;
+    const namaBerspasiGanda = `  ${nama.replace(' Kering ', '   Kering   ')}  `;
 
     const res = await request(app)
       .post('/api/categories')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: '  Snack   Kering  ' });
+      .send({ name: namaBerspasiGanda });
 
     expect(res.status).toBe(201);
-    expect(res.body.name).toBe('Snack Kering'); // spasi berlebih dirapikan
+    expect(res.body.name).toBe(nama); // spasi berlebih dirapikan
     expect(res.body.created_by).toBe(OWNER_ID);
     expect(res.body.id).toBeTruthy();
 
     // kategori baru ikut muncul di daftar
     const list = await request(app).get('/api/categories').set('Authorization', `Bearer ${token}`);
-    expect(list.body.map((c: { name: string }) => c.name)).toContain('Snack Kering');
+    expect(list.body.map((c: { name: string }) => c.name)).toContain(nama);
   });
 
   it('menolak nama yang sudah dipakai, walau beda huruf besar/kecil', async () => {

@@ -1,6 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeJwt } from '../../../test/fixtures'
 import { AuthProvider } from '../AuthProvider'
