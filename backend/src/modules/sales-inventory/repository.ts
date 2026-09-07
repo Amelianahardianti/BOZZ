@@ -462,6 +462,137 @@ export async function updateProduct(
 }
 
 // ---------------------------------------------------------------------
+// Marketplace product mapping (channel_listings) -- Task 10B.
+//
+// Tabel ini SUDAH ADA sejak awal (schema lama), dibaca Task 7B
+// (ecommerce-sync/repository.ts upsertExternalOrderRow) tapi TIDAK PERNAH
+// ditulis oleh kode manapun sebelum ini -- lihat laporan audit Task 10A.
+// Fungsi di bawah ini CUMA CRUD tipis di atas channel_listings yang
+// SAMA PERSIS, tidak ada tabel/sistem mapping kedua.
+// ---------------------------------------------------------------------
+
+export interface ProductMappingResponse {
+  id: string;
+  platform_id: string;
+  platform_name: string;
+  external_item_id: string;
+  external_sku: string | null;
+}
+
+function keMappingResponse(baris: {
+  id: string;
+  platform_id: string;
+  external_item_id: string;
+  external_sku: string | null;
+  platforms: { platform_name: string };
+}): ProductMappingResponse {
+  return {
+    id: baris.id,
+    platform_id: baris.platform_id,
+    platform_name: baris.platforms.platform_name,
+    external_item_id: baris.external_item_id,
+    external_sku: baris.external_sku,
+  };
+}
+
+/** Semua marketplace listing yang terhubung ke satu produk BOZZ (Task 10B, GET /products/:id/mappings). */
+export async function getProductMappings(productId: string): Promise<ProductMappingResponse[]> {
+  if (bukanUuid(productId)) return [];
+  const rows = await prisma.channel_listings.findMany({
+    where: { product_id: productId },
+    include: { platforms: { select: { platform_name: true } } },
+    orderBy: { created_at: 'asc' },
+  });
+  return rows.map(keMappingResponse);
+}
+
+/** Satu baris platform (buat validasi platform_id ada sebelum bikin mapping). */
+export async function findPlatformById(id: string) {
+  if (bukanUuid(id)) return null;
+  return prisma.platforms.findUnique({ where: { id } });
+}
+
+/** Satu mapping by id -- dipakai update/delete buat pastikan mapping-nya beneran milik produk yang diminta. */
+export async function findMappingById(id: string) {
+  if (bukanUuid(id)) return null;
+  return prisma.channel_listings.findUnique({
+    where: { id },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+}
+
+/**
+ * Cari mapping existing berdasarkan (platform_id, external_item_id) --
+ * pasangan yang sama seperti @@unique di schema DAN yang dipakai lookup
+ * asli Task 7B. Include nama produk pemilik saat ini, buat pesan
+ * conflict yang jelas ("sudah terhubung ke produk X") tanpa query kedua.
+ */
+export async function findMappingByPlatformAndExternalId(platformId: string, externalItemId: string) {
+  if (bukanUuid(platformId)) return null;
+  return prisma.channel_listings.findUnique({
+    where: { platform_id_external_item_id: { platform_id: platformId, external_item_id: externalItemId } },
+    include: { products: { select: { name: true } } },
+  });
+}
+
+/** Bikin mapping baru -- pemanggil (service.ts) yang wajib mastiin belum ada duplikat lebih dulu. */
+export async function createProductMapping(input: {
+  product_id: string;
+  platform_id: string;
+  external_item_id: string;
+}): Promise<ProductMappingResponse> {
+  const created = await prisma.channel_listings.create({
+    data: {
+      product_id: input.product_id,
+      platform_id: input.platform_id,
+      external_item_id: input.external_item_id,
+    },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(created);
+}
+
+/**
+ * Pindahkan satu mapping existing ke produk lain (Scenario 3 -- re-map)
+ * -- SATU UPDATE atomic terhadap product_id, BUKAN delete+create, supaya
+ * tidak pernah ada jeda "mapping ini tidak menunjuk ke produk mana pun".
+ */
+export async function reassignProductMapping(mappingId: string, productId: string): Promise<ProductMappingResponse> {
+  const updated = await prisma.channel_listings.update({
+    where: { id: mappingId },
+    data: { product_id: productId },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(updated);
+}
+
+/** Ganti external_item_id mapping yang sudah ada (platform & produk TETAP sama). */
+export async function updateProductMappingExternalId(
+  mappingId: string,
+  externalItemId: string
+): Promise<ProductMappingResponse> {
+  const updated = await prisma.channel_listings.update({
+    where: { id: mappingId },
+    data: { external_item_id: externalItemId },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(updated);
+}
+
+/**
+ * Hapus mapping. Order LAMA (external_order_items.product_id) TIDAK
+ * ikut berubah -- itu snapshot hasil resolve saat ingestion, bukan
+ * referensi hidup ke channel_listings (lihat laporan Task 10B Phase 4).
+ * Cuma order BARU dengan external_item_id yang sama yang kena
+ * dampaknya (product_id bakal NULL lagi, fallback SKU tetap jalan
+ * seperti biasa -- logic Task 7B di ecommerce-sync/repository.ts sama
+ * sekali tidak disentuh).
+ */
+export async function deleteProductMapping(mappingId: string): Promise<void> {
+  await prisma.channel_listings.delete({ where: { id: mappingId } });
+}
+
+// ---------------------------------------------------------------------
 // Transactions (checkout)
 // ---------------------------------------------------------------------
 

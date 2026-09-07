@@ -20,7 +20,7 @@ import { prisma } from '../src/shared/db';
 import * as repo from '../src/modules/ecommerce-sync/repository';
 import * as authRepo from '../src/modules/auth-product/repository';
 import type { User } from '../src/modules/auth-product/repository';
-import { ownerToken } from './helpers/auth';
+import { kasirToken, ownerToken, staffToken } from './helpers/auth';
 import { pinjamAkun, siapkanKolamAkun } from './helpers/fixtures';
 
 jest.mock('../src/modules/auth-product/repository');
@@ -214,5 +214,176 @@ describe('Business-flow: Mapping -> Order Ingestion -> Ticket (Task 7B Section E
     expect(ticketRes.status).toBe(201);
     expect(ticketRes.body.items).toHaveLength(1);
     expect(ticketRes.body.items[0].product_id).toBe(productId);
+  });
+});
+
+// -----------------------------------------------------------------------
+// TASK 10B — Marketplace Mapping CRUD (GET/POST/PATCH/DELETE
+// /products/:id/mappings). Lihat laporan audit Task 10A untuk desain.
+// -----------------------------------------------------------------------
+
+function createMapping(productId: string, body: Record<string, unknown>) {
+  return request(app)
+    .post(`/api/products/${productId}/mappings`)
+    .set('Authorization', `Bearer ${ownerToken()}`)
+    .send(body);
+}
+
+function listMappings(productId: string, token = ownerToken()) {
+  return request(app).get(`/api/products/${productId}/mappings`).set('Authorization', `Bearer ${token}`);
+}
+
+function updateMapping(productId: string, mappingId: string, body: Record<string, unknown>, token = ownerToken()) {
+  return request(app)
+    .patch(`/api/products/${productId}/mappings/${mappingId}`)
+    .set('Authorization', `Bearer ${token}`)
+    .send(body);
+}
+
+function deleteMapping(productId: string, mappingId: string, token = ownerToken()) {
+  return request(app).delete(`/api/products/${productId}/mappings/${mappingId}`).set('Authorization', `Bearer ${token}`);
+}
+
+describe('Marketplace Mapping CRUD (Task 10B)', () => {
+  it('Test 1 -- create mapping lewat API, response berisi platform_name (join, bukan cuma platform_id)', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+    const externalItemId = `TEST-CRUD-${randomUUID()}`;
+
+    const res = await createMapping(productId, { platform_id: platformId, external_item_id: externalItemId });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      platform_id: platformId,
+      platform_name: 'fakestore',
+      external_item_id: externalItemId,
+    });
+    expect(res.body.id).toBeTruthy();
+
+    const list = await listMappings(productId);
+    expect(list.body).toHaveLength(1);
+    expect(list.body[0].id).toBe(res.body.id);
+  });
+
+  it('Test 2 -- satu produk boleh punya beberapa listing marketplace (3 external id berbeda)', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+
+    const a = await createMapping(productId, { platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+    const b = await createMapping(productId, { platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+    const c = await createMapping(productId, { platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+
+    expect([a.status, b.status, c.status]).toEqual([201, 201, 201]);
+    const list = await listMappings(productId);
+    expect(list.body).toHaveLength(3);
+  });
+
+  it('Test 3 -- platform isolation: external_item_id yang SAMA boleh dipakai di platform berbeda', async () => {
+    const fakestore = await fakestorePlatformId();
+    const tiktok = await prisma.platforms.create({ data: { platform_name: 'tiktok', is_connected: false } });
+    const sharedExternalId = `TEST-SHARED-${randomUUID()}`;
+    const productA = await seedProduct();
+    const productB = await seedProduct();
+
+    const a = await createMapping(productA, { platform_id: fakestore, external_item_id: sharedExternalId });
+    const b = await createMapping(productB, { platform_id: tiktok.id, external_item_id: sharedExternalId });
+
+    expect(a.status).toBe(201);
+    expect(b.status).toBe(201);
+  });
+
+  it('Test 4 -- conflict: mapping sudah ada di produk lain -> 409 tanpa reassign, sukses dengan reassign=true', async () => {
+    const platformId = await fakestorePlatformId();
+    const externalItemId = `TEST-CONFLICT-${randomUUID()}`;
+    const productA = await seedProduct();
+    const productB = await seedProduct();
+
+    const pertama = await createMapping(productA, { platform_id: platformId, external_item_id: externalItemId });
+    expect(pertama.status).toBe(201);
+
+    const tanpaReassign = await createMapping(productB, { platform_id: platformId, external_item_id: externalItemId });
+    expect(tanpaReassign.status).toBe(409);
+    expect(tanpaReassign.body.error.message).toMatch(/sudah terhubung/i);
+
+    const denganReassign = await createMapping(productB, {
+      platform_id: platformId,
+      external_item_id: externalItemId,
+      reassign: true,
+    });
+    expect(denganReassign.status).toBe(201);
+    expect(denganReassign.body.id).toBe(pertama.body.id); // baris yang SAMA, cuma product_id-nya pindah (UPDATE, bukan delete+create)
+
+    // Produk A tidak lagi punya mapping ini (sudah pindah ke B) --
+    // membuktikan pemindahannya beneran, bukan cuma bikin baris baru.
+    const listA = await listMappings(productA);
+    expect(listA.body).toHaveLength(0);
+    const listB = await listMappings(productB);
+    expect(listB.body).toHaveLength(1);
+  });
+
+  it('Test 5 -- update mapping: ganti external_item_id, platform & produk tetap sama', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+    const created = await createMapping(productId, { platform_id: platformId, external_item_id: `TEST-OLD-${randomUUID()}` });
+
+    const externalIdBaru = `TEST-NEW-${randomUUID()}`;
+    const res = await updateMapping(productId, created.body.id, { external_item_id: externalIdBaru });
+
+    expect(res.status).toBe(200);
+    expect(res.body.external_item_id).toBe(externalIdBaru);
+    expect(res.body.platform_id).toBe(platformId);
+  });
+
+  it('Test 6 -- delete mapping: mapping hilang, order BARU dengan external id tsb tidak lagi resolve', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+    const externalItemId = `TEST-DEL-${randomUUID()}`;
+    const created = await createMapping(productId, { platform_id: platformId, external_item_id: externalItemId });
+
+    const del = await deleteMapping(productId, created.body.id);
+    expect(del.status).toBe(204);
+
+    const list = await listMappings(productId);
+    expect(list.body).toHaveLength(0);
+
+    // Order BARU (ingest lagi) dengan external_item_id yang sama TIDAK lagi resolve.
+    const row = await ingest(platformId, externalItemId);
+    const items = await prisma.external_order_items.findMany({ where: { external_order_id: row.id } });
+    expect(items[0].product_id).toBeNull();
+  });
+
+  it('Test 7 -- authorization: owner boleh, kasir & pengepak 403', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+
+    // createMapping() (helper di atas) selalu pakai ownerToken() -- dipakai
+    // di sini sebagai kontrol positif, request kasir/pengepak manual di bawah.
+    const ownerRes = await createMapping(productId, { platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+    const kasirRes = await request(app)
+      .post(`/api/products/${productId}/mappings`)
+      .set('Authorization', `Bearer ${kasirToken()}`)
+      .send({ platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+    const pengepakRes = await request(app)
+      .post(`/api/products/${productId}/mappings`)
+      .set('Authorization', `Bearer ${staffToken('pengepak')}`)
+      .send({ platform_id: platformId, external_item_id: `TEST-${randomUUID()}` });
+
+    expect(ownerRes.status).toBe(201);
+    expect(kasirRes.status).toBe(403);
+    expect(kasirRes.body.error.code).toBe('FORBIDDEN');
+    expect(pengepakRes.status).toBe(403);
+  });
+
+  it('Test 8 -- integration regression: mapping dibuat lewat API -> upsertExternalOrderRow() ASLI beneran resolve', async () => {
+    const platformId = await fakestorePlatformId();
+    const productId = await seedProduct();
+    const externalItemId = `TEST-REG-${randomUUID()}`;
+
+    const created = await createMapping(productId, { platform_id: platformId, external_item_id: externalItemId });
+    expect(created.status).toBe(201);
+
+    const row = await ingest(platformId, externalItemId);
+    const items = await prisma.external_order_items.findMany({ where: { external_order_id: row.id } });
+    expect(items[0].product_id).toBe(productId);
   });
 });

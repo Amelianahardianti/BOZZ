@@ -190,6 +190,100 @@ export async function updateProduct(
 }
 
 // ---------------------------------------------------------------------
+// Marketplace product mapping (channel_listings) -- Task 10B.
+// ---------------------------------------------------------------------
+
+export type ProductMappingResponse = repo.ProductMappingResponse;
+
+/** GET /products/:id/mappings -- semua listing marketplace milik satu produk. */
+export async function listProductMappings(productId: string): Promise<ProductMappingResponse[]> {
+  const product = await repo.findProductById(productId);
+  if (!product) {
+    throw notFound('Produk tidak ditemukan.');
+  }
+  return repo.getProductMappings(productId);
+}
+
+/**
+ * POST /products/:id/mappings.
+ *
+ * Kalau (platform_id, external_item_id) yang diminta SUDAH ada:
+ *   - milik produk ini juga -> conflict (mapping-nya sudah persis ada).
+ *   - listing belum pernah di-link ke produk mana pun (product_id NULL)
+ *     -> langsung di-attach ke produk ini, tidak perlu reassign=true
+ *     (tidak ada yang "diambil" dari produk lain).
+ *   - milik produk LAIN -> conflict KECUALI reassign=true diminta
+ *     eksplisit (Scenario 3 -- re-map, TIDAK PERNAH silent overwrite).
+ */
+export async function createProductMapping(input: {
+  productId: string;
+  platformId: string;
+  externalItemId: string;
+  reassign: boolean;
+}): Promise<ProductMappingResponse> {
+  const product = await repo.findProductById(input.productId);
+  if (!product) {
+    throw notFound('Produk tidak ditemukan.');
+  }
+
+  const platform = await repo.findPlatformById(input.platformId);
+  if (!platform) {
+    throw notFound('Platform tidak ditemukan.');
+  }
+
+  const existing = await repo.findMappingByPlatformAndExternalId(input.platformId, input.externalItemId);
+  if (existing) {
+    if (existing.product_id === input.productId) {
+      throw conflict(`Item eksternal "${input.externalItemId}" pada platform ini sudah terhubung ke produk ini.`);
+    }
+    if (existing.product_id !== null && !input.reassign) {
+      throw conflict(
+        `Item eksternal "${input.externalItemId}" pada platform ini sudah terhubung ke produk "${
+          existing.products?.name ?? 'lain'
+        }". Konfirmasi pemindahan (reassign) untuk memindahkannya ke produk ini.`
+      );
+    }
+    // product_id NULL (listing belum pernah di-link) ATAU reassign=true
+    // dikonfirmasi -- SATU UPDATE atomic, bukan delete+create.
+    return repo.reassignProductMapping(existing.id, input.productId);
+  }
+
+  return repo.createProductMapping({
+    product_id: input.productId,
+    platform_id: input.platformId,
+    external_item_id: input.externalItemId,
+  });
+}
+
+/** PATCH /products/:id/mappings/:mappingId -- ganti external_item_id, platform & produk TETAP sama. */
+export async function updateProductMapping(input: {
+  productId: string;
+  mappingId: string;
+  externalItemId: string;
+}): Promise<ProductMappingResponse> {
+  const mapping = await repo.findMappingById(input.mappingId);
+  if (!mapping || mapping.product_id !== input.productId) {
+    throw notFound('Mapping tidak ditemukan.');
+  }
+
+  const conflicting = await repo.findMappingByPlatformAndExternalId(mapping.platform_id, input.externalItemId);
+  if (conflicting && conflicting.id !== input.mappingId) {
+    throw conflict(`Item eksternal "${input.externalItemId}" pada platform ini sudah dipakai mapping lain.`);
+  }
+
+  return repo.updateProductMappingExternalId(input.mappingId, input.externalItemId);
+}
+
+/** DELETE /products/:id/mappings/:mappingId. */
+export async function deleteProductMapping(input: { productId: string; mappingId: string }): Promise<void> {
+  const mapping = await repo.findMappingById(input.mappingId);
+  if (!mapping || mapping.product_id !== input.productId) {
+    throw notFound('Mapping tidak ditemukan.');
+  }
+  await repo.deleteProductMapping(input.mappingId);
+}
+
+// ---------------------------------------------------------------------
 // Import produk massal (POST /products/import)
 // ---------------------------------------------------------------------
 

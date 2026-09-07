@@ -1,10 +1,12 @@
-import { FiEdit2, FiPackage, FiPower } from 'react-icons/fi'
+import { FiEdit2, FiLink, FiPackage, FiPower } from 'react-icons/fi'
 import type { Product } from '../../api/products'
 
 interface ProductActionsProps {
   product: Product
   onEdit: () => void
   onAdjustStock: () => void
+  /** Buka MarketplaceMappingModal (Task 10B) -- disabled buat produk nonaktif, lihat komentar di tombolnya. */
+  onMapping: () => void
   /** Buka ConfirmActionModal (dirender sekali di ProductsPage, bukan di sini) -- behavior TIDAK berubah, tetap minta konfirmasi. */
   onDeactivate: () => void
   /** Langsung panggil API tanpa konfirmasi -- behavior TIDAK berubah. */
@@ -23,7 +25,7 @@ const ICON_BUTTON_CLASSES = 'inline-flex h-9 w-9 cursor-pointer items-center jus
  * aria-label tetap ada, jadi fungsinya tetap jelas lewat tooltip browser
  * & assistive tech walau teksnya dihilangin dari tampilan.
  */
-export function ProductActions({ product, onEdit, onAdjustStock, onDeactivate, onActivate }: ProductActionsProps) {
+export function ProductActions({ product, onEdit, onAdjustStock, onMapping, onDeactivate, onActivate }: ProductActionsProps) {
   return (
     <div className="flex items-center gap-1">
       <button
@@ -45,6 +47,17 @@ export function ProductActions({ product, onEdit, onAdjustStock, onDeactivate, o
       >
         <FiPackage aria-hidden="true" className="h-4.5 w-4.5" />
         Stok
+      </button>
+      <button
+        type="button"
+        title={product.is_active ? 'Kelola mapping marketplace' : 'Mapping tidak tersedia untuk produk nonaktif'}
+        aria-label={product.is_active ? 'Kelola mapping marketplace' : 'Mapping tidak tersedia untuk produk nonaktif'}
+        onClick={onMapping}
+        disabled={!product.is_active}
+        className={`${TEXT_BUTTON_CLASSES} text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent`}
+      >
+        <FiLink aria-hidden="true" className="h-4.5 w-4.5" />
+        Mapping
       </button>
       {product.is_active ? (
         <button
