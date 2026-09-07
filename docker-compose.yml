@@ -7,7 +7,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: pos_platform
     ports:
-      - "5432:5432"
+      # Host 5433 (bukan 5432) -- port 5432 di mesin ini SUDAH dipakai
+      # Postgres native (Homebrew) yang berjalan terpisah, jadi 5432:5432
+      # bikin koneksi nyasar ke instance yang salah. Di DALAM container
+      # tetap 5432 seperti biasa, cuma mapping host-nya yang beda.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

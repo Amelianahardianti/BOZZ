@@ -159,6 +159,11 @@ describe('runSlaEscalationCheck — orchestration (repository & auth-product di-
   });
 
   it('gagal membuat notifikasi untuk 1 owner TIDAK menjatuhkan proses order lain', async () => {
+    // Kegagalan "DB sempat down" ini SENGAJA dipicu -- runSlaEscalationCheck
+    // memang mencatatnya lewat console.error (service.ts) sebelum lanjut ke
+    // order berikutnya. Di-spy lokal cuma buat test ini.
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     mockedRepo.findOrdersNeedingEscalation.mockResolvedValue([
       buildCandidate({ id: 'order-a' }),
       buildCandidate({ id: 'order-b' }),
@@ -173,5 +178,11 @@ describe('runSlaEscalationCheck — orchestration (repository & auth-product di-
 
     expect(mockedAuthRepo.createNotification).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ notified: 2, skipped: 0 });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[ecommerce-sync] gagal bikin notifikasi eskalasi SLA'),
+      expect.any(Error)
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 });

@@ -19,7 +19,11 @@ function buildFixtures(platformName: string): NormalizedOrder[] {
       buyerUsername: 'rina_amelia',
       shippingCarrier: 'GrabExpress Instant',
       rawPayload: { mock: true, platform: platformName, note: 'order baru' },
-      items: [{ itemName: 'Kaos Polos Hitam L', qty: 2, unitPrice: 75000 }],
+      // externalItemRef 'DEMO-001' SENGAJA ditambah -- data demo minimal buat
+      // membuktikan SKU matching (lihat repository.ts upsertExternalOrderRow)
+      // beneran jalan end-to-end, sesuai laporan audit "Order -> Ticket".
+      // Cocokkan dengan 1 produk internal ber-SKU 'DEMO-001'.
+      items: [{ itemName: 'Kaos Polos Hitam L', qty: 2, unitPrice: 75000, externalItemRef: 'DEMO-001' }],
     },
     {
       externalOrderId: `MOCK-${prefix}-002`,

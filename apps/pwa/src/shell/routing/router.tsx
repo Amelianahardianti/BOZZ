@@ -8,7 +8,6 @@ import { DashboardPage } from '../../pages/dashboard/DashboardPage'
 import { KasirPage } from '../../pages/kasir/KasirPage'
 import { LoginPage } from '../../pages/login/LoginPage'
 import { NotFoundPage } from '../../pages/not-found/NotFoundPage'
-import { NotificationsPage } from '../../pages/notifications/NotificationsPage'
 import { OrdersPage } from '../../pages/orders/OrdersPage'
 import { PlatformsPage } from '../../pages/platforms/PlatformsPage'
 import { ProductsPage } from '../../pages/products/ProductsPage'
@@ -73,7 +72,12 @@ export const routeConfig: RouteObject[] = [
           { path: 'staff', element: <StaffPage /> },
         ],
       },
-      { path: 'notifications', element: guarded(ROUTES.notifications, <NotificationsPage />) },
+      // Notifikasi (P2 -- di luar scope MVP, keputusan PM): rute sengaja
+      // TIDAK didaftarkan di sini -- /notifications jatuh ke `*` (NotFoundPage)
+      // di bawah, perilaku 404 yang sudah ada, bukan bikin baru. Halaman,
+      // komponen, API, dan hook-nya TETAP ADA (pages/notifications/,
+      // api/notifications/, shell/notifications/), cuma gak ada jalan
+      // masuknya dari navigasi/router. Menghilangkan akses != menghapus fitur.
     ],
   },
   { path: '*', element: <NotFoundPage /> },

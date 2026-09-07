@@ -8,6 +8,8 @@ import * as ordersApi from '../../../api/orders'
 import * as platformsApi from '../../../api/platforms'
 import { AuthProvider } from '../../auth/AuthProvider'
 import { STORAGE_KEY, type AuthSession } from '../../auth/auth-context'
+import * as productCache from '../../offline/productCache'
+import * as storeSettingsCache from '../../offline/storeSettingsCache'
 import { routeConfig } from '../router'
 import { NAV_ITEMS, ROUTES, type AppRole } from '../routes'
 
@@ -21,10 +23,28 @@ vi.mock('../../../api/notifications', () => ({ fetchNotifications: vi.fn() }))
 // alasan notifications di atas.
 vi.mock('../../../api/orders', () => ({ fetchOrders: vi.fn() }))
 vi.mock('../../../api/platforms', () => ({ fetchPlatforms: vi.fn() }))
+// AppShell & KasirPage (rute /kasir, ikut disentuh it.each(NAV_ITEMS) di
+// bawah) manggil syncProductCache()/syncStoreSettingsCache() pas mount,
+// yang di baliknya nembak fetch() beneran ke API produk/store-settings --
+// TIDAK ada hubungannya sama yang diuji file ini (routing/RBAC). Cuma
+// fungsi sync-nya yang di-mock (tetap nembak network kalau tidak);
+// getCachedProducts/getCachedCategories/getCachedStoreSettings TETAP versi
+// asli (baca IndexedDB lewat fake-indexeddb, bukan network) supaya
+// useLiveQuery() di AppShell/KasirPage tidak berubah perilaku.
+vi.mock('../../offline/productCache', async () => {
+  const actual = await vi.importActual<typeof import('../../offline/productCache')>('../../offline/productCache')
+  return { ...actual, syncProductCache: vi.fn() }
+})
+vi.mock('../../offline/storeSettingsCache', async () => {
+  const actual = await vi.importActual<typeof import('../../offline/storeSettingsCache')>('../../offline/storeSettingsCache')
+  return { ...actual, syncStoreSettingsCache: vi.fn() }
+})
 
 const mockedFetchNotifications = vi.mocked(notificationsApi.fetchNotifications)
 const mockedFetchOrders = vi.mocked(ordersApi.fetchOrders)
 const mockedFetchPlatforms = vi.mocked(platformsApi.fetchPlatforms)
+const mockedSyncProductCache = vi.mocked(productCache.syncProductCache)
+const mockedSyncStoreSettingsCache = vi.mocked(storeSettingsCache.syncStoreSettingsCache)
 
 function sessionFor(role: AppRole): AuthSession {
   return {
@@ -39,6 +59,8 @@ beforeEach(() => {
   mockedFetchNotifications.mockResolvedValue([])
   mockedFetchOrders.mockResolvedValue([])
   mockedFetchPlatforms.mockResolvedValue([])
+  mockedSyncProductCache.mockResolvedValue(undefined)
+  mockedSyncStoreSettingsCache.mockResolvedValue(undefined)
 })
 
 /**
@@ -115,14 +137,14 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('Kasir buka /dashboard (bukan haknya) -> dialihkan ke /kasir', async () => {
     const router = renderAt(ROUTES.dashboard, 'kasir')
 
-    expect(await screen.findByRole('heading', { name: 'Kasir' })).toBeInTheDocument()
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 
   it('Kasir buka halaman Kasir/POS -- boleh', async () => {
     renderAt(ROUTES.kasir, 'kasir')
 
-    expect(await screen.findByRole('heading', { name: 'Kasir' })).toBeInTheDocument()
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument()
   })
 
   it('Pengepak buka /kasir (bukan haknya) -> dialihkan ke /tickets (Ticket Saya)', async () => {
@@ -141,7 +163,7 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('"/" buat Kasir diarahkan ke /kasir, BUKAN /dashboard', async () => {
     const router = renderAt('/', 'kasir')
 
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 
@@ -154,17 +176,16 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
 })
 
 describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
-  it('Kasir cuma lihat menu Kasir & Notifikasi', async () => {
+  it('Kasir cuma lihat menu Kasir', async () => {
     renderAt(ROUTES.kasir, 'kasir')
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
 
     expect(screen.getAllByRole('link', { name: 'Kasir' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Staf' })).not.toBeInTheDocument()
   })
 
-  it('Pengepak cuma lihat menu Ticket Saya & Notifikasi', async () => {
+  it('Pengepak cuma lihat menu Ticket Saya', async () => {
     renderAt(ROUTES.tickets, 'pengepak')
     await screen.findByRole('heading', { name: 'Ticket Saya' })
 
@@ -227,7 +248,7 @@ describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
   it('Kasir/Pengepak gak bisa akses /settings/staff sama sekali (dialihkan ke halaman defaultnya)', async () => {
     const router = renderAt(ROUTES.staff, 'kasir')
 
-    await screen.findByRole('heading', { name: 'Kasir' })
+    await screen.findByRole('searchbox')
     expect(router.state.location.pathname).toBe(ROUTES.kasir)
   })
 })
@@ -248,25 +269,23 @@ describe('Alur "kena lempar ke login, abis login SELALU ke default role (bukan b
   })
 })
 
-describe('Badge notifikasi belum dibaca di nav (AppShell)', () => {
-  it('ada notifikasi belum dibaca -- badge nampilin jumlahnya di link "Notifikasi"', async () => {
-    mockedFetchNotifications.mockResolvedValue([
-      { id: '1', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
-      { id: '2', user_id: 'x', type: 'x', title: 'x', message: null, reference_type: null, reference_id: null, is_read: false, created_at: new Date().toISOString() },
-    ])
+// Describe block "Badge notifikasi belum dibaca di nav (AppShell)" DIHAPUS
+// (bukan diskip) -- satu-satunya yang diuji di situ adalah link nav
+// "Notifikasi" (getAllByRole('link', { name: 'Notifikasi' })), yang sudah
+// sengaja dihapus dari NAV_ITEMS (routes.ts, keputusan PM: Notifikasi di
+// luar scope MVP).
+//
+// `vi.mock('../../../api/notifications', ...)` di atas TETAP dipertahankan
+// (bukan lagi buat mencegah AppShell nembak fetch beneran -- AppShell
+// SUDAH TIDAK memanggil useUnreadNotifications() sama sekali sekarang --
+// tapi supaya mock module-nya tetap konsisten/aman kalau nanti ada test
+// lain di file ini yang butuh). Test di bawah membuktikan runtime-nya
+// beneran mati, bukan cuma diasumsikan dari "route sudah dihapus".
+describe('Notification runtime TIDAK aktif di AppShell (di luar MVP scope)', () => {
+  it('AppShell mount (rute mana pun, role mana pun) TIDAK memicu fetchNotifications() sama sekali', async () => {
     renderAt(ROUTES.dashboard, 'owner')
     await screen.findByRole('heading', { name: 'Dashboard' })
 
-    expect((await screen.findAllByText('2')).length).toBeGreaterThan(0)
-  })
-
-  it('gak ada notifikasi belum dibaca -- gak ada badge sama sekali', async () => {
-    mockedFetchNotifications.mockResolvedValue([])
-    renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
-
-    // Notifikasi tetap ada sebagai link, cuma tanpa angka badge nempel.
-    expect(screen.getAllByRole('link', { name: 'Notifikasi' }).length).toBeGreaterThan(0)
-    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    expect(mockedFetchNotifications).not.toHaveBeenCalled()
   })
 })

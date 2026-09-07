@@ -196,15 +196,56 @@ export async function upsertExternalOrderRow(input: UpsertOrderInput) {
 
       await tx.external_order_items.deleteMany({ where: { external_order_id: row.id } });
       if (input.items.length) {
-        await tx.external_order_items.createMany({
-          data: input.items.map((item) => ({
-            external_order_id: row.id,
-            external_item_ref: item.externalItemRef,
-            item_name_snapshot: item.itemName,
-            qty: item.qty,
-            unit_price: item.unitPrice,
-          })),
-        });
+        // MVP product mapping, Phase 1 (Task 7B, lihat laporan audit Task 7 /
+        // 7A "Product Mapping Architecture Audit"). Dua sumber, DICEK
+        // BERURUTAN, bukan digabung:
+        //
+        //   1. channel_listings (platform_id + external_item_id, UNIK per
+        //      pasangan -- lihat prisma/schema.prisma) -- platform-scoped,
+        //      jadi FakeStore id "1" tidak pernah ketuker sama TikTok id "1".
+        //      Tabel ini sudah ADA di schema sejak awal tapi TIDAK PERNAH
+        //      ditulis/dibaca siapa pun sebelum ini (audit Task 7 & 7A
+        //      membuktikan 0 baris, 0 kode) -- baru mulai DIBACA di sini,
+        //      belum ada yang MENULISNYA (itu keputusan terpisah, di luar
+        //      scope Phase 1 ini, lihat laporan Task 7B).
+        //   2. products.sku (fallback) -- mekanisme LAMA, DIPERTAHANKAN utuh
+        //      supaya demo/mekanisme yang sudah ada (mis. DEMO-001) TETAP
+        //      jalan tanpa perubahan. Global (tidak platform-aware), exact
+        //      match SAJA (bukan fuzzy, bukan name match).
+        //
+        // Kalau channel_listings ketemu TAPI product_id-nya kosong (listing
+        // ada tapi belum di-link ke produk internal manapun), tetap lanjut
+        // ke fallback SKU -- bukan berhenti di situ, karena "listing ada"
+        // bukan berarti "sudah ter-mapping".
+        const itemsWithProductId = await Promise.all(
+          input.items.map(async (item) => {
+            const candidateSku = item.externalItemRef;
+            let productId: string | null = null;
+            if (candidateSku) {
+              const listing = await tx.channel_listings.findUnique({
+                where: {
+                  platform_id_external_item_id: { platform_id: input.platformId, external_item_id: candidateSku },
+                },
+                select: { product_id: true },
+              });
+              if (listing?.product_id) {
+                productId = listing.product_id;
+              } else {
+                const product = await tx.products.findFirst({ where: { sku: candidateSku }, select: { id: true } });
+                productId = product?.id ?? null;
+              }
+            }
+            return {
+              external_order_id: row.id,
+              product_id: productId,
+              external_item_ref: item.externalItemRef,
+              item_name_snapshot: item.itemName,
+              qty: item.qty,
+              unit_price: item.unitPrice,
+            };
+          })
+        );
+        await tx.external_order_items.createMany({ data: itemsWithProductId });
       }
 
       return row;
@@ -240,6 +281,19 @@ export async function listExternalOrderRows(filters: OrderListFilters) {
       sla_deadline: true,
       total_amount: true,
       received_at: true,
+      // Read-only, additive (laporan "Ticket Persistence"): expose relasi
+      // tickets yang sudah ada di schema tapi belum pernah di-select --
+      // biar frontend tau "order ini sudah ada ticket-nya" PERMANEN
+      // (bertahan lewat refresh), bukan cuma state React sementara.
+      // `take: 1` aman karena satu order = maks satu ticket dijamin
+      // business rule di sales-inventory/service.ts (cek
+      // findTicketByExternalOrderId sebelum create), meski relasi Prisma
+      // ini sendiri bukan @@unique di level DB.
+      tickets: {
+        select: { id: true, status: true, assigned_to_user_id: true },
+        orderBy: { created_at: 'desc' },
+        take: 1,
+      },
     },
     orderBy: { sla_deadline: 'asc' },
     skip: (filters.page - 1) * filters.limit,
@@ -254,6 +308,11 @@ export async function getExternalOrderDetailRow(id: string) {
     include: {
       external_order_items: true,
       order_shipping_address: true,
+      tickets: {
+        select: { id: true, status: true, assigned_to_user_id: true },
+        orderBy: { created_at: 'desc' },
+        take: 1,
+      },
     },
   });
 }

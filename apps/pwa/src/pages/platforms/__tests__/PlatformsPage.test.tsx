@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as platformsApi from '../../../api/platforms'
@@ -71,26 +71,36 @@ describe('PlatformsPage', () => {
     expect(await screen.findByRole('button', { name: 'Sinkronkan' })).toBeInTheDocument()
   })
 
-  it('klik Putuskan -- minta konfirmasi dulu, baru manggil disconnectPlatform', async () => {
+  it('klik Putuskan -- minta konfirmasi (ketik "putuskan") dulu, baru manggil disconnectPlatform', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockedFetch.mockResolvedValue([buildPlatform()])
     mockedDisconnect.mockResolvedValue(buildPlatform({ is_connected: false }))
     render(<PlatformsPage />)
 
     await user.click(await screen.findByRole('button', { name: 'Putuskan' }))
 
-    expect(window.confirm).toHaveBeenCalled()
+    // Modal ConfirmActionModal kebuka -- disconnectPlatform BELUM
+    // dipanggil sebelum kata konfirmasinya diketik & tombol confirm diklik.
+    // Scoped ke dalam dialog karena tombol trigger "Putuskan" di card masih
+    // ada di DOM di belakang overlay (bukan sekadar 1 tombol "Putuskan").
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { name: 'Putuskan Platform?' })).toBeInTheDocument()
+    expect(mockedDisconnect).not.toHaveBeenCalled()
+
+    await user.type(within(dialog).getByLabelText(/Ketik "putuskan"/i), 'putuskan')
+    await user.click(within(dialog).getByRole('button', { name: 'Putuskan' }))
+
     await waitFor(() => expect(mockedDisconnect).toHaveBeenCalledWith('shopee'))
   })
 
   it('batal konfirmasi Putuskan -- disconnectPlatform GAK dipanggil', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     mockedFetch.mockResolvedValue([buildPlatform()])
     render(<PlatformsPage />)
 
     await user.click(await screen.findByRole('button', { name: 'Putuskan' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Batal' }))
 
     expect(mockedDisconnect).not.toHaveBeenCalled()
   })

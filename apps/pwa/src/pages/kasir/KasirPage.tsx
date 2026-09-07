@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { FiAlertCircle, FiClock, FiWifi, FiWifiOff } from 'react-icons/fi'
 import { useOnlineStatus } from '../../shell/offline/connectivity'
 import type { CachedProduct } from '../../shell/offline/db'
 import { enqueueTransaction } from '../../shell/offline/outbox'
@@ -43,6 +44,33 @@ export function KasirPage() {
       })
     }
   }, [online])
+
+  const cartColumnRef = useRef<HTMLDivElement>(null)
+  const [cartHeightPx, setCartHeightPx] = useState<number | null>(null)
+
+  // Tinggi kolom CartPanel (desktop) DIUKUR dari posisi renderan asli --
+  // BUKAN dihitung tebak-tebakan dari angka rem header/toolbar AppShell.
+  // Ruang di atas CartPanel gak konstan (toolbar status jaringan/sync
+  // `flex-wrap` bisa jadi 1 atau 2 baris tergantung badge yang tampil,
+  // header AppShell juga gak sebulat angka rem), jadi satu-satunya cara
+  // akurat & tahan lama adalah baca `getBoundingClientRect()` beneran,
+  // bukan nebak dari kelas Tailwind. Diukur ulang tiap resize + tiap
+  // konten toolbar berpotensi berubah tinggi (online/pending/failed).
+  useLayoutEffect(() => {
+    function recalc() {
+      const el = cartColumnRef.current
+      const isDesktop = window.innerWidth >= 768 // breakpoint `md:` Tailwind
+      if (!el || !isDesktop) {
+        setCartHeightPx(null) // mobile -- CartPanel gak sticky/dibatasi, biarin alur normal.
+        return
+      }
+      const BOTTOM_MARGIN_PX = 16 // 1rem, konsisten sama sticky `top-4` di atasnya.
+      setCartHeightPx(Math.max(window.innerHeight - el.getBoundingClientRect().top - BOTTOM_MARGIN_PX, 0))
+    }
+    recalc()
+    window.addEventListener('resize', recalc)
+    return () => window.removeEventListener('resize', recalc)
+  }, [view, online, outboxStatus.pendingCount, outboxStatus.failedCount])
 
   function addToCart(product: CachedProduct) {
     setCart((prev) => {
@@ -101,28 +129,64 @@ export function KasirPage() {
   const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0)
 
   return (
-    <div className="flex h-[calc(100svh-8rem)] flex-col md:h-[calc(100svh-3rem)]">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs print:hidden">
-        <h1 className="mr-1 text-sm font-semibold text-slate-900">Kasir</h1>
-        <span className={`rounded-full px-2 py-0.5 font-medium ${online ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+    // Normal block flow -- halaman ini TIDAK dikunci ke tinggi viewport
+    // (AppShell.tsx TIDAK disentuh, <main>-nya tetap scroll seperti
+    // semula). Fixed/sticky behavior yang dibutuhkan Kasir (CartPanel
+    // tetap keliatan, action bar Payment gak ketutup scroll) diselesaikan
+    // lokal di sini pakai `sticky` relatif ke <main> yang scroll, BUKAN
+    // dengan mengunci h-full/overflow-hidden ke seluruh halaman. Judul
+    // "Kasir" (h1) DIHAPUS -- redundan sama top header AppShell yang
+    // udah nampilin nama menu aktif; toolbar status jaringan/sync tetap
+    // ada.
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+            online ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+          }`}
+        >
+          {online ? <FiWifi aria-hidden="true" className="h-3.5 w-3.5" /> : <FiWifiOff aria-hidden="true" className="h-3.5 w-3.5" />}
           {online ? 'Online' : 'Offline -- transaksi tetap kesimpen'}
         </span>
         {outboxStatus.pendingCount > 0 && (
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+            <FiClock aria-hidden="true" className="h-3.5 w-3.5" />
             {outboxStatus.pendingCount} transaksi belum tersinkron
           </span>
         )}
         {outboxStatus.failedCount > 0 && (
-          <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+            <FiAlertCircle aria-hidden="true" className="h-3.5 w-3.5" />
             {outboxStatus.failedCount} transaksi gagal, cek lagi nanti
           </span>
         )}
       </div>
 
       {view === 'shopping' && (
-        <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-[1fr_320px]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_320px] md:items-start">
           <ProductGrid products={products} categories={categories} onAdd={addToCart} />
-          <div className="border-t border-slate-200 pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
+          {/* Desktop: tinggi panel ini DIUKUR (cartHeightPx, lihat
+              useLayoutEffect di atas) dari posisi renderan asli -- BUKAN
+              calc(100svh-Xrem) yang nebak tinggi header/toolbar AppShell.
+              Ruang di atas panel ini gak konstan (toolbar status
+              online/pending/failed pakai flex-wrap, bisa 1 atau 2 baris),
+              jadi cuma pengukuran nyata yang akurat & tahan perubahan
+              konten toolbar/header di masa depan. Karena tingginya PASTI
+              (bukan auto-sampai-cap), isi flex-1 min-h-0 overflow-y-auto
+              di CartPanel (ul daftar item) bakal ngisi ruang kosong kalau
+              item dikit, dan baru scroll kalau kepanjangan -- header
+              "Keranjang" & footer Subtotal/Bayar (shrink-0 di CartPanel)
+              SELALU keliatan tanpa perlu discroll halaman. `md:items-start`
+              di grid di atas WAJIB ada -- tanpa itu grid nyeret ProductGrid
+              ikut stretch/dibatasi tinggi panel ini juga. Mobile: TIDAK
+              sticky & TIDAK dikasih tinggi tetap sama sekali (cartHeightPx
+              null di bawah md) -- alur normal, ikut scroll halaman kayak
+              biasa (gak ada nested/fixed scroll di mobile). */}
+          <div
+            ref={cartColumnRef}
+            style={cartHeightPx !== null ? { height: `${cartHeightPx}px` } : undefined}
+            className="flex flex-col border-t border-slate-200 pt-3 md:sticky md:top-4 md:border-l md:border-t-0 md:pl-4 md:pt-0"
+          >
             <CartPanel
               items={cart}
               onIncrement={incrementQty}
@@ -135,7 +199,7 @@ export function KasirPage() {
       )}
 
       {view === 'payment' && (
-        <PaymentPanel subtotal={subtotal} onBack={() => setView('shopping')} onConfirm={handleConfirmPayment} />
+        <PaymentPanel items={cart} subtotal={subtotal} onBack={() => setView('shopping')} onConfirm={handleConfirmPayment} />
       )}
 
       {view === 'receipt' && lastCheckout && (

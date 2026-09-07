@@ -462,6 +462,137 @@ export async function updateProduct(
 }
 
 // ---------------------------------------------------------------------
+// Marketplace product mapping (channel_listings) -- Task 10B.
+//
+// Tabel ini SUDAH ADA sejak awal (schema lama), dibaca Task 7B
+// (ecommerce-sync/repository.ts upsertExternalOrderRow) tapi TIDAK PERNAH
+// ditulis oleh kode manapun sebelum ini -- lihat laporan audit Task 10A.
+// Fungsi di bawah ini CUMA CRUD tipis di atas channel_listings yang
+// SAMA PERSIS, tidak ada tabel/sistem mapping kedua.
+// ---------------------------------------------------------------------
+
+export interface ProductMappingResponse {
+  id: string;
+  platform_id: string;
+  platform_name: string;
+  external_item_id: string;
+  external_sku: string | null;
+}
+
+function keMappingResponse(baris: {
+  id: string;
+  platform_id: string;
+  external_item_id: string;
+  external_sku: string | null;
+  platforms: { platform_name: string };
+}): ProductMappingResponse {
+  return {
+    id: baris.id,
+    platform_id: baris.platform_id,
+    platform_name: baris.platforms.platform_name,
+    external_item_id: baris.external_item_id,
+    external_sku: baris.external_sku,
+  };
+}
+
+/** Semua marketplace listing yang terhubung ke satu produk BOZZ (Task 10B, GET /products/:id/mappings). */
+export async function getProductMappings(productId: string): Promise<ProductMappingResponse[]> {
+  if (bukanUuid(productId)) return [];
+  const rows = await prisma.channel_listings.findMany({
+    where: { product_id: productId },
+    include: { platforms: { select: { platform_name: true } } },
+    orderBy: { created_at: 'asc' },
+  });
+  return rows.map(keMappingResponse);
+}
+
+/** Satu baris platform (buat validasi platform_id ada sebelum bikin mapping). */
+export async function findPlatformById(id: string) {
+  if (bukanUuid(id)) return null;
+  return prisma.platforms.findUnique({ where: { id } });
+}
+
+/** Satu mapping by id -- dipakai update/delete buat pastikan mapping-nya beneran milik produk yang diminta. */
+export async function findMappingById(id: string) {
+  if (bukanUuid(id)) return null;
+  return prisma.channel_listings.findUnique({
+    where: { id },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+}
+
+/**
+ * Cari mapping existing berdasarkan (platform_id, external_item_id) --
+ * pasangan yang sama seperti @@unique di schema DAN yang dipakai lookup
+ * asli Task 7B. Include nama produk pemilik saat ini, buat pesan
+ * conflict yang jelas ("sudah terhubung ke produk X") tanpa query kedua.
+ */
+export async function findMappingByPlatformAndExternalId(platformId: string, externalItemId: string) {
+  if (bukanUuid(platformId)) return null;
+  return prisma.channel_listings.findUnique({
+    where: { platform_id_external_item_id: { platform_id: platformId, external_item_id: externalItemId } },
+    include: { products: { select: { name: true } } },
+  });
+}
+
+/** Bikin mapping baru -- pemanggil (service.ts) yang wajib mastiin belum ada duplikat lebih dulu. */
+export async function createProductMapping(input: {
+  product_id: string;
+  platform_id: string;
+  external_item_id: string;
+}): Promise<ProductMappingResponse> {
+  const created = await prisma.channel_listings.create({
+    data: {
+      product_id: input.product_id,
+      platform_id: input.platform_id,
+      external_item_id: input.external_item_id,
+    },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(created);
+}
+
+/**
+ * Pindahkan satu mapping existing ke produk lain (Scenario 3 -- re-map)
+ * -- SATU UPDATE atomic terhadap product_id, BUKAN delete+create, supaya
+ * tidak pernah ada jeda "mapping ini tidak menunjuk ke produk mana pun".
+ */
+export async function reassignProductMapping(mappingId: string, productId: string): Promise<ProductMappingResponse> {
+  const updated = await prisma.channel_listings.update({
+    where: { id: mappingId },
+    data: { product_id: productId },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(updated);
+}
+
+/** Ganti external_item_id mapping yang sudah ada (platform & produk TETAP sama). */
+export async function updateProductMappingExternalId(
+  mappingId: string,
+  externalItemId: string
+): Promise<ProductMappingResponse> {
+  const updated = await prisma.channel_listings.update({
+    where: { id: mappingId },
+    data: { external_item_id: externalItemId },
+    include: { platforms: { select: { platform_name: true } } },
+  });
+  return keMappingResponse(updated);
+}
+
+/**
+ * Hapus mapping. Order LAMA (external_order_items.product_id) TIDAK
+ * ikut berubah -- itu snapshot hasil resolve saat ingestion, bukan
+ * referensi hidup ke channel_listings (lihat laporan Task 10B Phase 4).
+ * Cuma order BARU dengan external_item_id yang sama yang kena
+ * dampaknya (product_id bakal NULL lagi, fallback SKU tetap jalan
+ * seperti biasa -- logic Task 7B di ecommerce-sync/repository.ts sama
+ * sekali tidak disentuh).
+ */
+export async function deleteProductMapping(mappingId: string): Promise<void> {
+  await prisma.channel_listings.delete({ where: { id: mappingId } });
+}
+
+// ---------------------------------------------------------------------
 // Transactions (checkout)
 // ---------------------------------------------------------------------
 
@@ -1002,6 +1133,7 @@ export async function updateTicketProgress(input: {
   ticket_id: string;
   status?: TicketStatus;
   items?: { id: string; is_packed: boolean }[];
+  actor_user_id?: string | null;
 }): Promise<{ ticket: Ticket; baruSajaSelesai: boolean }> {
   if (bukanUuid(input.ticket_id)) {
     throw notFound('Ticket tidak ditemukan.');
@@ -1033,10 +1165,81 @@ export async function updateTicketProgress(input: {
 
     const semuaSelesaiSebelum = itemSekarang.every((i) => i.is_packed);
 
+    // Baris di atas (terkunci[0].status === TICKET_STATUS_TERMINAL) SUDAH
+    // menjamin ticket ini belum pernah handed_over sebelum request ini --
+    // jadi begitu input.status === 'handed_over' lolos sampai sini,
+    // itu PASTI transisi baru, bukan pengulangan (Task 9A, Phase C/H).
+    // Stok TIDAK PERNAH dikurangi di titik lain (order masuk/sync, ticket
+    // dibuat, assigned, packing, item dicentang, status packed) -- HANYA
+    // di sini, sekali per ticket, dalam SATU transaksi yang sama dengan
+    // update status ticket itu sendiri (bukan panggilan terpisah ke
+    // commitStockAdjustment(), yang akan buka transaksinya sendiri).
+    const iniHandover = input.status === TICKET_STATUS_TERMINAL;
+    let produkTerkunci: Map<string, ProdukTerkunci> = new Map();
+    if (iniHandover) {
+      // Tahap 1 lanjutan (masih "kunci + periksa, belum ada yang diubah")
+      // -- kunci baris produk pola PERSIS sama seperti commitCheckout()
+      // (kunciProduk: dedup + sort by id, hindari deadlock), lalu
+      // pastikan SEMUA item cukup stoknya SEBELUM ada satu pun yang
+      // ditulis. Kuantitas dari ticket_items.qty (BUKAN
+      // external_order_items.qty -- lihat laporan audit Task 9A D4/D5,
+      // ticket_items adalah catatan qty yang sebenarnya di-packing).
+      produkTerkunci = await kunciProduk(
+        tx,
+        itemSekarang.map((i) => i.product_id)
+      );
+      for (const item of itemSekarang) {
+        const product = produkTerkunci.get(item.product_id);
+        if (!product) {
+          throw notFound(`Produk ${item.product_id} tidak ditemukan.`);
+        }
+        if (product.stock_qty < item.qty) {
+          throw conflict(
+            `Stok "${product.name}" tinggal ${product.stock_qty}, tidak cukup untuk ${item.qty}. Ticket tidak bisa diserahkan.`
+          );
+        }
+      }
+    }
+
     // Tahap 2: baru tulis.
     const now = new Date();
     for (const { item, is_packed } of perubahanItem) {
       await tx.ticket_items.update({ where: { id: item.id }, data: { is_packed } });
+    }
+
+    if (iniHandover) {
+      // Semua item sudah dipastikan cukup stoknya di Tahap 1 -- di sini
+      // tinggal tulis, tidak ada pengecekan lagi yang bisa gagal di
+      // tengah jalan (all-or-nothing: kalau salah satu gagal, seluruh
+      // prisma.$transaction() ini rollback, termasuk centang checklist
+      // di atas dan update status ticket di bawah).
+      for (const item of itemSekarang) {
+        const product = produkTerkunci.get(item.product_id)!;
+        const stockBefore = product.stock_qty;
+        const stockAfter = stockBefore - item.qty;
+
+        await tx.products.update({
+          where: { id: product.id },
+          data: { stock_qty: stockAfter, updated_at: now },
+        });
+
+        await tx.stock_adjustments.create({
+          data: {
+            product_id: product.id,
+            change_qty: -item.qty,
+            // Nilai yang sudah tersedia di StockChangeReason (shared/event-bus.ts)
+            // & sudah dicadangkan sejak awal buat kasus ini -- lihat
+            // laporan audit Task 9A A3 (tidak perlu enum baru).
+            reason: 'external_order',
+            reference_type: 'external_order',
+            reference_id: input.ticket_id,
+            stock_before: stockBefore,
+            stock_after: stockAfter,
+            adjusted_by_user_id: input.actor_user_id ?? null,
+            created_at: now,
+          },
+        });
+      }
     }
 
     const dataTicket: Prisma.ticketsUncheckedUpdateInput = { updated_at: now };

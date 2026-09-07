@@ -252,3 +252,124 @@ describe('GET /api/orders/:id — HTTP (repository.ts di-mock)', () => {
     expect(mockedRepo.getExternalOrderDetailRow).not.toHaveBeenCalled();
   });
 });
+
+// Task 3 (Guided Order Action) — audit menemukan endpoint ini SEBELUMNYA
+// menerima status APA PUN dari status APA PUN tanpa validasi sama sekali
+// (mis. 'completed' -> 'new' diterima mentah-mentah). Validasi transition
+// kecil ditambahkan di service.ts (ALLOWED_STATUS_TRANSITIONS) -- test di
+// bawah ini membuktikan endpoint HTTP-nya benar-benar menegakkan itu,
+// bukan cuma mengandalkan guided action di frontend.
+describe('PATCH /api/orders/:id/status — validasi transition (Task 3)', () => {
+  function buildDetailRow(status: string): OrderDetailRow {
+    return { id: 'order-1', status } as unknown as OrderDetailRow;
+  }
+
+  it('transition maju satu langkah (new -> processing) -> 200, diteruskan ke repository', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('new'));
+    mockedRepo.updateExternalOrderStatusRow.mockResolvedValue(buildDetailRow('processing') as never);
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(200);
+    expect(mockedRepo.updateExternalOrderStatusRow).toHaveBeenCalledWith('order-1', 'processing');
+  });
+
+  it('transition maju satu langkah (processing -> shipped) -> 200', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('processing'));
+    mockedRepo.updateExternalOrderStatusRow.mockResolvedValue(buildDetailRow('shipped') as never);
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'shipped' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('transition maju satu langkah (shipped -> completed) -> 200', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('shipped'));
+    mockedRepo.updateExternalOrderStatusRow.mockResolvedValue(buildDetailRow('completed') as never);
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('melompat jauh ke depan (new -> completed) -> 409 CONFLICT, repository TIDAK dipanggil', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('new'));
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'completed' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(mockedRepo.updateExternalOrderStatusRow).not.toHaveBeenCalled();
+  });
+
+  it('mundur dari status terminal (completed -> new) -> 409 CONFLICT, repository TIDAK dipanggil', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('completed'));
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'new' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(mockedRepo.updateExternalOrderStatusRow).not.toHaveBeenCalled();
+  });
+
+  it('status terminal (cancelled) juga terkunci -> 409 kalau dicoba diubah lagi', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('cancelled'));
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(409);
+    expect(mockedRepo.updateExternalOrderStatusRow).not.toHaveBeenCalled();
+  });
+
+  it('mundur satu langkah antar status aktif (shipped -> processing) -> 409', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('shipped'));
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(409);
+    expect(mockedRepo.updateExternalOrderStatusRow).not.toHaveBeenCalled();
+  });
+
+  it('status sama (no-op, processing -> processing) -> 200, tetap diteruskan', async () => {
+    mockedRepo.getExternalOrderDetailRow.mockResolvedValue(buildDetailRow('processing'));
+    mockedRepo.updateExternalOrderStatusRow.mockResolvedValue(buildDetailRow('processing') as never);
+
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${ownerToken()}`)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('RBAC kasir -> 403 (endpoint owner-only)', async () => {
+    const res = await request(app)
+      .patch('/api/orders/order-1/status')
+      .set('Authorization', `Bearer ${kasirToken()}`)
+      .send({ status: 'processing' });
+
+    expect(res.status).toBe(403);
+    expect(mockedRepo.updateExternalOrderStatusRow).not.toHaveBeenCalled();
+  });
+});

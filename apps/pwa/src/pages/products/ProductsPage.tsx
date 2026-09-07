@@ -17,6 +17,7 @@ import {
 import { formatRupiah } from '../../shell/currency'
 import { FiPlus, FiUpload } from 'react-icons/fi'
 import { ImportProductModal } from './ImportProductModal'
+import { MarketplaceMappingModal } from './MarketplaceMappingModal'
 import { ProductActions } from './ProductActions'
 import { ProductForm } from './ProductForm'
 import { StockAdjustmentModal } from './StockAdjustmentModal'
@@ -92,6 +93,7 @@ export function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null)
+  const [mappingProduct, setMappingProduct] = useState<Product | null>(null)
   const [pendingDeactivate, setPendingDeactivate] = useState<Product | null>(null)
   const [isConfirmSubmitting, setIsConfirmSubmitting] = useState(false)
 
@@ -359,6 +361,7 @@ export function ProductsPage() {
                         product={product}
                         onEdit={() => openEditForm(product)}
                         onAdjustStock={() => setAdjustingProduct(product)}
+                        onMapping={() => setMappingProduct(product)}
                         onDeactivate={() => setPendingDeactivate(product)}
                         onActivate={() => handleActivate(product)}
                       />
@@ -397,6 +400,10 @@ export function ProductsPage() {
             refreshList()
           }}
         />
+      )}
+
+      {mappingProduct && (
+        <MarketplaceMappingModal product={mappingProduct} onClose={() => setMappingProduct(null)} />
       )}
 
       {pendingDeactivate && (

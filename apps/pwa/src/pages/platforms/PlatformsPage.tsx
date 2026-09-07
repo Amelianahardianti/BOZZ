@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react'
 import { connectPlatform, disconnectPlatform, fetchPlatforms, syncPlatform, type Platform, type PlatformName } from '../../api/platforms'
 import { ApiRequestError } from '../../api/client'
-import { Button, Card, EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from '../../shell/design-system'
+import { ConfirmActionModal, EmptyState, ErrorState, LoadingState } from '../../shell/design-system'
+import { PlatformCard, type PlatformActionType } from './PlatformCard'
 
 const PLATFORM_LABEL: Record<PlatformName, string> = {
   shopee: 'Shopee',
   tiktok: 'TikTok',
   fakestore: 'FakeStore (demo)',
+  tokopedia: 'Tokopedia',
 }
 
 export function PlatformsPage() {
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [actioningPlatform, setActioningPlatform] = useState<PlatformName | null>(null)
+  // Aksi mana yang lagi jalan buat platform mana -- MURNI presentation/
+  // loading state (tombol mana yang nunjukin spinner vs cuma disabled),
+  // gak ngubah kapan API beneran dipanggil.
+  const [actioning, setActioning] = useState<{ platform: PlatformName; type: PlatformActionType } | null>(null)
+  const [pendingDisconnect, setPendingDisconnect] = useState<Platform | null>(null)
+  const [isConfirmSubmitting, setIsConfirmSubmitting] = useState(false)
 
   function load() {
     setIsLoading(true)
@@ -40,54 +47,47 @@ export function PlatformsPage() {
   }, [])
 
   async function handleConnect(platformName: PlatformName) {
-    setActioningPlatform(platformName)
+    setActioning({ platform: platformName, type: 'connect' })
     try {
       await connectPlatform(platformName)
       load()
     } catch (err) {
       window.alert(err instanceof ApiRequestError ? err.message : 'Gagal menghubungkan platform.')
     } finally {
-      setActioningPlatform(null)
-    }
-  }
-
-  async function handleDisconnect(platform: Platform) {
-    if (
-      !window.confirm(
-        `Putuskan koneksi ${PLATFORM_LABEL[platform.platform_name]}? Sinkronisasi order baru bakal berhenti sampai dihubungkan lagi.`,
-      )
-    )
-      return
-    setActioningPlatform(platform.platform_name)
-    try {
-      await disconnectPlatform(platform.platform_name)
-      load()
-    } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal memutuskan koneksi platform.')
-    } finally {
-      setActioningPlatform(null)
+      setActioning(null)
     }
   }
 
   async function handleSync(platform: Platform) {
-    setActioningPlatform(platform.platform_name)
+    setActioning({ platform: platform.platform_name, type: 'sync' })
     try {
       await syncPlatform(platform.platform_name)
       load()
     } catch (err) {
       window.alert(err instanceof ApiRequestError ? err.message : 'Gagal memulai sinkronisasi.')
     } finally {
-      setActioningPlatform(null)
+      setActioning(null)
+    }
+  }
+
+  async function handleConfirmDisconnect() {
+    if (!pendingDisconnect) return
+    setIsConfirmSubmitting(true)
+    setActioning({ platform: pendingDisconnect.platform_name, type: 'disconnect' })
+    try {
+      await disconnectPlatform(pendingDisconnect.platform_name)
+      setPendingDisconnect(null)
+      load()
+    } catch (err) {
+      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal memutuskan koneksi platform.')
+    } finally {
+      setIsConfirmSubmitting(false)
+      setActioning(null)
     }
   }
 
   return (
     <>
-      <PageHeader
-        title="Platform"
-        description="Hubungkan/putuskan toko ke Shopee, TikTok, FakeStore (FR-OC-01) -- mode mock, belum pakai e-commerce asli."
-      />
-
       {isLoading ? (
         <LoadingState />
       ) : loadError ? (
@@ -95,63 +95,31 @@ export function PlatformsPage() {
       ) : platforms.length === 0 ? (
         <EmptyState title="Belum ada platform terdaftar" />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {platforms.map((platform) => (
-            <Card key={platform.platform_name}>
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-slate-900">{PLATFORM_LABEL[platform.platform_name]}</p>
-                    <StatusBadge
-                      label={platform.is_connected ? 'Terhubung' : 'Belum Terhubung'}
-                      tone={platform.is_connected ? 'success' : 'neutral'}
-                    />
-                  </div>
-                  {platform.is_connected && platform.shop_id_external && (
-                    <p className="mt-1 text-xs text-slate-500">Toko: {platform.shop_id_external}</p>
-                  )}
-                  {platform.last_synced_at && (
-                    <p className="mt-1 text-xs text-slate-400">
-                      Sync terakhir: {new Date(platform.last_synced_at).toLocaleString('id-ID')}
-                      {' -- '}
-                      <span className={platform.last_sync_status === 'success' ? 'text-green-600' : 'text-red-600'}>
-                        {platform.last_sync_status === 'success' ? 'berhasil' : 'gagal'}
-                      </span>
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex gap-2">
-                  {platform.is_connected ? (
-                    <>
-                      <Button
-                        variant="secondary"
-                        disabled={actioningPlatform === platform.platform_name}
-                        onClick={() => handleSync(platform)}
-                      >
-                        {actioningPlatform === platform.platform_name ? 'Memproses...' : 'Sinkronkan'}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        disabled={actioningPlatform === platform.platform_name}
-                        onClick={() => handleDisconnect(platform)}
-                      >
-                        Putuskan
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      disabled={actioningPlatform === platform.platform_name}
-                      onClick={() => handleConnect(platform.platform_name)}
-                    >
-                      {actioningPlatform === platform.platform_name ? 'Menghubungkan...' : 'Hubungkan'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </Card>
+            <PlatformCard
+              key={platform.platform_name}
+              platform={platform}
+              actioningAction={actioning?.platform === platform.platform_name ? actioning.type : null}
+              onConnect={() => handleConnect(platform.platform_name)}
+              onSync={() => handleSync(platform)}
+              onDisconnect={() => setPendingDisconnect(platform)}
+            />
           ))}
         </div>
+      )}
+
+      {pendingDisconnect && (
+        <ConfirmActionModal
+          title="Putuskan Platform?"
+          description={`Anda yakin ingin memutuskan koneksi ${PLATFORM_LABEL[pendingDisconnect.platform_name]} dari toko ini? Sinkronisasi order baru bakal berhenti sampai dihubungkan lagi.`}
+          confirmWord="putuskan"
+          confirmLabel="Putuskan"
+          variant="danger"
+          isSubmitting={isConfirmSubmitting}
+          onConfirm={handleConfirmDisconnect}
+          onCancel={() => setPendingDisconnect(null)}
+        />
       )}
     </>
   )

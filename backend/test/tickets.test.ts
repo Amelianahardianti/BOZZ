@@ -91,7 +91,7 @@ function seedPengepak(overrides: Partial<User> = {}): User {
   return pengepak;
 }
 
-async function seedProduct(token: string, name = `Produk Ticket ${randomUUID()}`): Promise<string> {
+async function seedProduct(token: string, name = `TEST-PRODUCT-${randomUUID()}`): Promise<string> {
   const res = await request(app)
     .post('/api/products')
     .set('Authorization', `Bearer ${token}`)
@@ -108,7 +108,7 @@ describe('POST /api/tickets', () => {
   it('membuat ticket dari order dan menugaskannya ke satu Pengepak', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const productId = await seedProduct(token, 'Sabun Batang');
+    const productId = await seedProduct(token, 'TEST-Sabun Batang');
     const orderId = await bikinExternalOrder();
 
     const res = await createTicket(token, {
@@ -156,7 +156,7 @@ describe('POST /api/tickets', () => {
   it('membekukan nama produk dan menandai semua item belum dipacking', async () => {
     const token = ownerToken();
     const pengepak = seedPengepak();
-    const productId = await seedProduct(token, 'Nama Saat Ticket Dibuat');
+    const productId = await seedProduct(token, 'TEST-Nama Saat Ticket Dibuat');
 
     const res = await createTicket(token, {
       external_order_id: await bikinExternalOrder(),
@@ -166,7 +166,7 @@ describe('POST /api/tickets', () => {
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].product_id).toBe(productId);
-    expect(res.body.items[0].product_name_snapshot).toBe('Nama Saat Ticket Dibuat');
+    expect(res.body.items[0].product_name_snapshot).toBe('TEST-Nama Saat Ticket Dibuat');
     expect(res.body.items[0].qty).toBe(3);
     expect(res.body.items[0].is_packed).toBe(false);
     expect(res.body.items[0].id).toBeTruthy();
@@ -175,9 +175,9 @@ describe('POST /api/tickets', () => {
     await request(app)
       .patch(`/api/products/${productId}`)
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Nama Baru Setelah Ticket' });
+      .send({ name: 'TEST-Nama Baru Setelah Ticket' });
 
-    expect(res.body.items[0].product_name_snapshot).toBe('Nama Saat Ticket Dibuat');
+    expect(res.body.items[0].product_name_snapshot).toBe('TEST-Nama Saat Ticket Dibuat');
   });
 
   it('tidak mengubah stok, karena stok order marketplace sudah dipotong lebih dulu', async () => {
@@ -450,12 +450,20 @@ describe('GET /api/tickets', () => {
       assigned.body.some((t: { external_order_id: string }) => t.external_order_id === orderId)
     ).toBe(true);
 
-    // Belum ada endpoint pengubah status, jadi status lain pasti kosong.
+    // Belum ada endpoint pengubah status di test ini, jadi TICKET YANG
+    // BARU DIBUAT DI SINI pasti gak mungkin muncul di filter status lain.
+    // TIDAK di-assert bahwa filter 'handed_over' KOSONG SECARA GLOBAL --
+    // DB yang dipakai `npm test` sama-sama dipakai buat demo/testing
+    // manual (akun asli, bukan akun test), jadi ticket handed_over asli
+    // BOLEH ada di sana; yang penting cuma ticket bikinan test ini sendiri
+    // gak ikut nyasar ke filter status yang salah.
     const handedOver = await request(app)
       .get('/api/tickets')
       .query({ status: 'handed_over', limit: 100 })
       .set('Authorization', `Bearer ${token}`);
-    expect(handedOver.body).toEqual([]);
+    expect(
+      handedOver.body.some((t: { external_order_id: string }) => t.external_order_id === orderId)
+    ).toBe(false);
   });
 
   it('memotong hasil per halaman', async () => {
@@ -979,6 +987,16 @@ describe('PATCH /api/tickets/:id/status', () => {
     const pengepak = seedPengepak();
     const ticket = await seedTicket2Item(token, pengepak);
 
+    // Semua item harus dicentang dulu (guard Task 5) sebelum handed_over
+    // diterima -- lihat describe block "PATCH .../status -- guard
+    // handed_over" di bawah buat kasus item BELUM lengkap.
+    await ubahStatus(token, ticket.id, {
+      ticket_items: [
+        { id: ticket.items[0].id, is_packed: true },
+        { id: ticket.items[1].id, is_packed: true },
+      ],
+    });
+
     const selesai = await ubahStatus(token, ticket.id, { status: 'handed_over' });
     expect(selesai.status).toBe(200);
     expect(selesai.body.status).toBe('handed_over');
@@ -987,6 +1005,75 @@ describe('PATCH /api/tickets/:id/status', () => {
     const lagi = await ubahStatus(token, ticket.id, { status: 'packing' });
     expect(lagi.status).toBe(409);
     expect(lagi.body.error.code).toBe('CONFLICT');
+  });
+
+  describe('guard handed_over -- semua item harus sudah dikemas (Task 5)', () => {
+    it('item belum semua dicentang -> 409, status TIDAK berubah', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+      });
+
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+
+      const cek = await request(app)
+        .get('/api/tickets')
+        .query({ limit: 100 })
+        .set('Authorization', `Bearer ${token}`);
+      const masih = cek.body.find((t: { id: string }) => t.id === ticket.id);
+      expect(masih.status).not.toBe('handed_over');
+    });
+
+    it('tidak ada item yang dicentang sama sekali -> 409', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+    });
+
+    it('semua item sudah dicentang lebih dulu -> handed_over diterima (200)', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [
+          { id: ticket.items[0].id, is_packed: true },
+          { id: ticket.items[1].id, is_packed: true },
+        ],
+      });
+      const res = await ubahStatus(token, ticket.id, { status: 'handed_over' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('handed_over');
+    });
+
+    it('centang item terakhir SEKALIGUS kirim status handed_over dalam satu request -> diterima', async () => {
+      const token = ownerToken();
+      const pengepak = seedPengepak();
+      const ticket = await seedTicket2Item(token, pengepak);
+
+      await ubahStatus(token, ticket.id, {
+        ticket_items: [{ id: ticket.items[0].id, is_packed: true }],
+      });
+      const res = await ubahStatus(token, ticket.id, {
+        status: 'handed_over',
+        ticket_items: [{ id: ticket.items[1].id, is_packed: true }],
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('handed_over');
+    });
   });
 
   it('pengepak boleh mengerjakan ticketnya sendiri', async () => {

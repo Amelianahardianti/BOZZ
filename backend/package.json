@@ -7,7 +7,12 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "lint": "eslint 'src/**/*.ts'",
-    "test": "jest --passWithNoTests",
+    "test": "DOTENV_CONFIG_PATH=.env.test jest --passWithNoTests",
+    "test:db:up": "docker compose -f ../docker-compose.yml up -d postgres",
+    "test:db:migrate": "DOTENV_CONFIG_PATH=.env.test npx prisma migrate deploy",
+    "test:db:seed": "DOTENV_CONFIG_PATH=.env.test npx prisma db execute --file scripts/seed-owner.sql && DOTENV_CONFIG_PATH=.env.test npx prisma db execute --file scripts/seed-test-users.sql && DOTENV_CONFIG_PATH=.env.test npx prisma db execute --file scripts/seed-sales-inventory.sql",
+    "test:db:prepare": "npm run test:db:up && npm run test:db:migrate && npm run test:db:seed",
+    "test:local": "npm run test:db:prepare && npm test",
     "postinstall": "prisma generate"
   },
   "dependencies": {

@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { FiArrowRight, FiCheckCircle, FiClock, FiEye, FiLoader, FiPackage, FiTruck, FiUser } from 'react-icons/fi'
+import type { IconType } from 'react-icons'
 import {
   fetchOrderDetail,
   fetchOrders,
@@ -8,8 +11,9 @@ import {
   type SlaType,
 } from '../../api/orders'
 import { fetchPlatforms, type Platform } from '../../api/platforms'
-import { createTicket } from '../../api/tickets'
+import { createTicket, type TicketStatus } from '../../api/tickets'
 import { fetchStaff, type Staff } from '../../api/staff'
+import { ROUTES } from '../../shell/routing/routes'
 import { ApiRequestError } from '../../api/client'
 import {
   Button,
@@ -27,11 +31,6 @@ import {
 } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
 
-// Order yang masih aktif (belum selesai/batal) yang boleh dibikinkan
-// ticket packing -- order yang sudah completed/cancelled gak relevan lagi
-// buat dikemas.
-const TICKETABLE_STATUSES: ExternalOrderStatus[] = ['new', 'processing']
-
 const STATUS_LABEL: Record<ExternalOrderStatus, string> = {
   new: 'Baru',
   processing: 'Diproses',
@@ -46,6 +45,20 @@ const STATUS_TONE: Record<ExternalOrderStatus, BadgeTone> = {
   shipped: 'info',
   completed: 'success',
   cancelled: 'neutral',
+}
+
+// Section "Status Packing" (Task 4) -- satu-satunya sumber label/warna
+// status ticket di halaman ini sekarang (badge inline yang dulu dipakai
+// renderGuidedAction, Task 3, dihapus karena dobel sama section ini).
+// Icon dari react-icons/fi yang SUDAH dipakai di file ini (FiPackage,
+// FiEye) + yang sudah ada di project (FiClock/FiLoader/FiCheckCircle/
+// FiTruck) -- tidak ada icon library baru.
+const PACKING_STATUS_CONFIG: Record<TicketStatus, { label: string; icon: IconType; className: string }> = {
+  unassigned: { label: 'Belum ditugaskan', icon: FiClock, className: 'text-slate-500' },
+  assigned: { label: 'Menunggu Pengepakan', icon: FiClock, className: 'text-amber-600' },
+  packing: { label: 'Sedang Dikemas', icon: FiLoader, className: 'text-blue-600' },
+  packed: { label: 'Packing Selesai', icon: FiCheckCircle, className: 'text-purple-600' },
+  handed_over: { label: 'Diserahkan', icon: FiTruck, className: 'text-green-600' },
 }
 
 // Label UI "Jenis Pengiriman" -- SlaType/SLA_LABEL (nama variabel & key)
@@ -79,25 +92,24 @@ function isOverdue(order: OrderDetail): boolean {
 }
 
 export function OrdersPage() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState<OrderDetail[]>([])
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
+  // Task 6 -- inline error buat handleUpdateStatus, ganti window.alert().
+  // Di-scope per order (bukan satu string global) karena beberapa Order
+  // Card tampil sekaligus di halaman ini.
+  const [statusError, setStatusError] = useState<{ orderId: string; message: string } | null>(null)
 
-  const [pengepakList, setPengepakList] = useState<Staff[]>([])
+  const [staffList, setStaffList] = useState<Staff[]>([])
   const [creatingTicketFor, setCreatingTicketFor] = useState<OrderDetail | null>(null)
   const [ticketPengepakId, setTicketPengepakId] = useState('')
   const [ticketNotes, setTicketNotes] = useState('')
   const [ticketError, setTicketError] = useState<string | null>(null)
   const [isCreatingTicket, setIsCreatingTicket] = useState(false)
-  // Order yang barusan dibikinkan ticket -- ditandai lokal biar tombol
-  // "Buat Ticket"-nya langsung hilang tanpa nunggu reload, TAPI ini
-  // cuma tau ticket yang dibikin lewat sesi halaman ini sendiri. Kalau
-  // order-nya udah punya ticket dari sesi/pengguna lain, backend yang
-  // nolak (409 Conflict) -- pesannya ditampilin apa adanya.
-  const [ticketCreatedOrderIds, setTicketCreatedOrderIds] = useState<Set<string>>(new Set())
 
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<PageSize>(10)
@@ -158,16 +170,27 @@ export function OrdersPage() {
       .finally(() => setIsLoading(false))
   }, [filters, page, pageSize])
 
-  // Daftar pengepak gak terikat filter/halaman order, jadi cukup ditarik
-  // sekali pas halaman dibuka -- dipakai buat dropdown di form "Buat Ticket".
+  // Daftar staf gak terikat filter/halaman order, jadi cukup ditarik
+  // sekali pas halaman dibuka -- dipakai buat dropdown di form "Buat
+  // Ticket" (cuma pengepak aktif, lihat pengepakList di bawah) DAN buat
+  // resolve nama pengepak di section "Status Packing" (Task 4, staffName
+  // di bawah) -- pola sama kayak staffName() di TicketsPage.tsx.
   useEffect(() => {
     fetchStaff()
-      .then((staff) => setPengepakList(staff.filter((s) => s.role === 'pengepak' && s.is_active)))
+      .then(setStaffList)
       .catch(() => {
-        // Gagal diam-diam -- dropdown pengepak bakal kosong, ketauan pas
-        // user coba buka form "Buat Ticket" (gak ada pilihan sama sekali).
+        // Gagal diam-diam -- dropdown pengepak bakal kosong (ketauan pas
+        // user coba buka form "Buat Ticket") dan nama pengepak fallback
+        // ke ID mentah (staffName di bawah) -- bukan blank/error.
       })
   }, [])
+
+  const pengepakList = staffList.filter((s) => s.role === 'pengepak' && s.is_active)
+
+  function staffName(id: string | null): string {
+    if (!id) return 'Belum ditugaskan'
+    return staffList.find((s) => s.id === id)?.name ?? id
+  }
 
   function openCreateTicket(order: OrderDetail) {
     setCreatingTicketFor(order)
@@ -192,13 +215,24 @@ export function OrdersPage() {
     setIsCreatingTicket(true)
     setTicketError(null)
     try {
-      await createTicket({
+      const ticket = await createTicket({
         external_order_id: creatingTicketFor.id,
         assigned_to_user_id: ticketPengepakId,
         notes: ticketNotes.trim() || undefined,
         items: validItems.map((item) => ({ product_id: item.product_id as string, qty: item.qty })),
       })
-      setTicketCreatedOrderIds((prev) => new Set(prev).add(creatingTicketFor.id))
+      // Update `ticket` order yang relevan langsung dari response --
+      // sumber kebenaran yang sama kayak yang bakal dibalikin GET /orders
+      // habis refresh (bukan lagi flag terpisah yang cuma hidup di state
+      // React, lihat "Ticket Persistence" fix).
+      const orderId = creatingTicketFor.id
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, ticket: { id: ticket.id, status: ticket.status, assigned_to_user_id: ticket.assigned_to_user_id } }
+            : o
+        )
+      )
       setCreatingTicketFor(null)
     } catch (err) {
       setTicketError(err instanceof ApiRequestError ? err.message : 'Gagal membuat ticket.')
@@ -209,14 +243,119 @@ export function OrdersPage() {
 
   async function handleUpdateStatus(orderId: string, newStatus: ExternalOrderStatus) {
     setUpdatingOrderId(orderId)
+    // Bersihkan error lama SEBELUM request baru -- retry harus mulai dari
+    // tampilan bersih, bukan numpuk error sebelumnya (Task 6).
+    setStatusError(null)
     try {
       const updated = await updateOrderStatus(orderId, newStatus)
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: updated.status } : o)))
     } catch (err) {
-      window.alert(err instanceof ApiRequestError ? err.message : 'Gagal mengubah status order.')
+      // Task 6 -- ganti window.alert() (blocking) jadi inline error di
+      // dekat tombol action yang gagal. Di-scope per orderId (pola sama
+      // kayak updatingOrderId) karena banyak Order Card bisa tampil
+      // sekaligus -- tanpa scoping, gak jelas kartu mana yang gagal.
+      setStatusError({
+        orderId,
+        message: err instanceof ApiRequestError ? err.message : 'Gagal mengubah status pesanan.',
+      })
     } finally {
       setUpdatingOrderId(null)
     }
+  }
+
+  // Guided action (Task 3) -- GANTI dropdown status bebas yang sebelumnya
+  // bisa langsung "Completed -> New" atau "New -> Completed" (membingungkan
+  // & berisiko buat demo). Cuma satu action yang relevan buat status
+  // SEKARANG yang ditampilkan, urutan majunya SAMA PERSIS sama
+  // ALLOWED_STATUS_TRANSITIONS di backend (service.ts) -- backend TETAP
+  // menegakkan aturan yang sama, tombol ini cuma "guided" di UI, bukan
+  // satu-satunya proteksi.
+  function renderGuidedAction(order: OrderDetail) {
+    const isUpdating = updatingOrderId === order.id
+
+    if (order.status === 'completed' || order.status === 'cancelled') {
+      // Status terminal -- StatusBadge di header kartu sudah cukup,
+      // sengaja TIDAK ada action apa pun lagi di sini.
+      return null
+    }
+
+    if (order.status === 'new') {
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'processing')}>
+            Mulai Diproses
+            <FiArrowRight aria-hidden="true" className="h-4 w-4" />
+          </Button>
+          {statusError?.orderId === order.id && <p className="text-sm text-red-600">{statusError.message}</p>}
+        </div>
+      )
+    }
+
+    if (order.status === 'processing') {
+      if (order.ticket === null) {
+        return (
+          <Button variant="secondary" onClick={() => openCreateTicket(order)}>
+            <FiPackage aria-hidden="true" className="h-4 w-4" />
+            Buat Ticket
+          </Button>
+        )
+      }
+      // Ticket sudah ada -- status & tombol "Lihat Ticket" gak lagi
+      // dirender di sini (dobel), tapi di section "Status Packing" di
+      // bawah kartu (Task 4, renderPackingStatus), yang tampil buat
+      // SEMUA status order (bukan cuma processing), bukan cuma di sini.
+      return null
+    }
+
+    // shipped -- belum ada mockup eksplisit di brief Task 3 (fokusnya di
+    // new/processing/terminal), tapi data order 'shipped' beneran ada
+    // (mis. hasil sync marketplace) -- tetap dikasih SATU action lanjutan
+    // yang konsisten sama pola guided lainnya, bukan dibiarkan tanpa aksi
+    // sama sekali. Transition-nya (shipped -> completed) sama seperti yang
+    // sudah ditegakkan backend.
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <Button variant="secondary" isLoading={isUpdating} onClick={() => handleUpdateStatus(order.id, 'completed')}>
+          <FiCheckCircle aria-hidden="true" className="h-4 w-4" />
+          Tandai Selesai
+        </Button>
+        {statusError?.orderId === order.id && <p className="text-sm text-red-600">{statusError.message}</p>}
+      </div>
+    )
+  }
+
+  // Section "Status Packing" (Task 4) -- hubungan Order->Ticket->Packing
+  // langsung kelihatan dari kartu order, tanpa buka halaman Ticket dulu.
+  // Tampil buat order status APA PUN selama sudah ada ticket-nya (bukan
+  // cuma processing) -- data ticket-nya sendiri sudah ikut kebawa di
+  // response GET /orders (backend repository.ts, relasi tickets), jadi
+  // TIDAK ada request tambahan per kartu di sini (gak N+1).
+  function renderPackingStatus(order: OrderDetail) {
+    if (!order.ticket) return null
+    const config = PACKING_STATUS_CONFIG[order.ticket.status]
+    const Icon = config.icon
+    return (
+      <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+            <FiPackage aria-hidden="true" className="h-3.5 w-3.5" />
+            Status Packing
+          </p>
+          <p className={`mt-1 flex items-center gap-1.5 text-sm font-medium ${config.className}`}>
+            <Icon aria-hidden="true" className="h-4 w-4" />
+            {config.label}
+          </p>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+            <FiUser aria-hidden="true" className="h-3.5 w-3.5" />
+            Pengepak: {staffName(order.ticket.assigned_to_user_id)}
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => navigate(ROUTES.tickets)}>
+          <FiEye aria-hidden="true" className="h-4 w-4" />
+          Lihat Ticket
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -338,29 +477,10 @@ export function OrdersPage() {
                   <p className="font-semibold text-slate-900">
                     Total: {order.total_amount !== null ? formatRupiah(order.total_amount) : '-'}
                   </p>
-                  <select
-                    aria-label="Ubah status order"
-                    value={order.status}
-                    disabled={updatingOrderId === order.id}
-                    onChange={(event) => handleUpdateStatus(order.id, event.target.value as ExternalOrderStatus)}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-                  >
-                    {(Object.keys(STATUS_LABEL) as ExternalOrderStatus[]).map((status) => (
-                      <option key={status} value={status}>
-                        {STATUS_LABEL[status]}
-                      </option>
-                    ))}
-                  </select>
-                  {TICKETABLE_STATUSES.includes(order.status) && !ticketCreatedOrderIds.has(order.id) && (
-                    <Button variant="secondary" onClick={() => openCreateTicket(order)}>
-                      Buat Ticket
-                    </Button>
-                  )}
-                  {ticketCreatedOrderIds.has(order.id) && (
-                    <span className="text-xs font-medium text-green-600">Ticket dibuat</span>
-                  )}
+                  {renderGuidedAction(order)}
                 </div>
               </div>
+              {renderPackingStatus(order)}
             </Card>
           ))}
         </div>

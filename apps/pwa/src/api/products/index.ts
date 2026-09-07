@@ -133,6 +133,61 @@ export async function adjustStock(
   })
 }
 
+/** Cerminan satu baris channel_listings, sisi produk BOZZ (Task 10B). */
+export interface ProductMapping {
+  id: string
+  platform_id: string
+  platform_name: string
+  external_item_id: string
+  external_sku: string | null
+}
+
+/** GET /api/products/:id/mappings -- Owner. Semua listing marketplace milik produk ini. */
+export async function fetchProductMappings(productId: string): Promise<ProductMapping[]> {
+  return apiRequest<ProductMapping[]>(`/products/${productId}/mappings`, { token: requireToken() })
+}
+
+export interface CreateProductMappingInput {
+  platform_id: string
+  external_item_id: string
+  /** Cuma dipakai kalau backend balas 409 (external_item_id ini sudah
+   *  terhubung ke produk lain) DAN user sudah mengonfirmasi pemindahan. */
+  reassign?: boolean
+}
+
+/** POST /api/products/:id/mappings -- Owner. */
+export async function createProductMapping(
+  productId: string,
+  input: CreateProductMappingInput,
+): Promise<ProductMapping> {
+  return apiRequest<ProductMapping>(`/products/${productId}/mappings`, {
+    method: 'POST',
+    body: input,
+    token: requireToken(),
+  })
+}
+
+/** PATCH /api/products/:id/mappings/:mappingId -- Owner. Ganti external_item_id, platform & produk tetap sama. */
+export async function updateProductMapping(
+  productId: string,
+  mappingId: string,
+  input: { external_item_id: string },
+): Promise<ProductMapping> {
+  return apiRequest<ProductMapping>(`/products/${productId}/mappings/${mappingId}`, {
+    method: 'PATCH',
+    body: input,
+    token: requireToken(),
+  })
+}
+
+/** DELETE /api/products/:id/mappings/:mappingId -- Owner. */
+export async function deleteProductMapping(productId: string, mappingId: string): Promise<void> {
+  await apiRequest<void>(`/products/${productId}/mappings/${mappingId}`, {
+    method: 'DELETE',
+    token: requireToken(),
+  })
+}
+
 export type ImportJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
 export interface ImportJob {

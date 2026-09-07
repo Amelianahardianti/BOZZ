@@ -220,6 +220,80 @@ router.post(
 );
 
 // =====================================================================
+// Marketplace product mapping (channel_listings) -- Task 10B
+// =====================================================================
+
+// ---------- GET /api/products/:id/mappings ----------
+router.get(
+  '/products/:id/mappings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const mappings = await service.listProductMappings(req.params.id);
+    res.status(200).json(mappings);
+  })
+);
+
+// ---------- POST /api/products/:id/mappings ----------
+const externalItemId = z.string().trim().min(1, 'external_item_id wajib diisi').max(100, 'external_item_id maksimal 100 karakter');
+
+const createMappingSchema = z.object({
+  platform_id: z.string().trim().min(1, 'platform_id wajib diisi'),
+  external_item_id: externalItemId,
+  // Cuma dipakai kalau (platform_id, external_item_id) yang diminta
+  // SUDAH terhubung ke produk LAIN -- tanpa flag ini, request ditolak
+  // 409 (TIDAK PERNAH silent overwrite, lihat Task 10B Phase 2 Scenario 3).
+  reassign: z.boolean().optional(),
+});
+
+router.post(
+  '/products/:id/mappings',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const body = createMappingSchema.parse(req.body);
+    const mapping = await service.createProductMapping({
+      productId: req.params.id,
+      platformId: body.platform_id,
+      externalItemId: body.external_item_id,
+      reassign: body.reassign ?? false,
+    });
+    res.status(201).json(mapping);
+  })
+);
+
+// ---------- PATCH /api/products/:id/mappings/:mappingId ----------
+const updateMappingSchema = z.object({
+  external_item_id: externalItemId,
+});
+
+router.patch(
+  '/products/:id/mappings/:mappingId',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    const body = updateMappingSchema.parse(req.body);
+    const mapping = await service.updateProductMapping({
+      productId: req.params.id,
+      mappingId: req.params.mappingId,
+      externalItemId: body.external_item_id,
+    });
+    res.status(200).json(mapping);
+  })
+);
+
+// ---------- DELETE /api/products/:id/mappings/:mappingId ----------
+router.delete(
+  '/products/:id/mappings/:mappingId',
+  requireAuth,
+  requireRole('owner'),
+  asyncHandler(async (req, res) => {
+    await service.deleteProductMapping({ productId: req.params.id, mappingId: req.params.mappingId });
+    res.status(204).send();
+  })
+);
+
+// =====================================================================
 // Import produk massal
 // =====================================================================
 

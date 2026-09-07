@@ -1,7 +1,7 @@
 import { readStoredSession } from '../../shell/auth/auth-context'
 import { apiRequest } from '../client'
 
-export type PlatformName = 'shopee' | 'tiktok' | 'fakestore'
+export type PlatformName = 'shopee' | 'tiktok' | 'fakestore' | 'tokopedia'
 
 /** Cerminan #/components/schemas/Platform di contracts/api.yaml. */
 export interface Platform {
