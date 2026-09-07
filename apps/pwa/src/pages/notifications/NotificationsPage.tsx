@@ -82,8 +82,6 @@ export function NotificationsPage() {
   return (
     <>
       <PageHeader
-        title="Notifikasi"
-        description="Update pesanan masuk & ticket packing (FR-FI-10)."
         actions={
           hasUnread ? (
             <Button variant="secondary" disabled={isMarkingAll} onClick={handleMarkAllRead}>

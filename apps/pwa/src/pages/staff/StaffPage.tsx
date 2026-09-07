@@ -226,11 +226,7 @@ export function StaffPage() {
 
   return (
     <>
-      <PageHeader
-        title="Staf"
-        description="Kelola akun Kasir & Pengepak (FR-FI-03)."
-        actions={<Button onClick={openCreateForm}>Tambah Staf</Button>}
-      />
+      <PageHeader actions={<Button onClick={openCreateForm}>Tambah Staf</Button>} />
 
       {isLoading ? (
         <LoadingState />

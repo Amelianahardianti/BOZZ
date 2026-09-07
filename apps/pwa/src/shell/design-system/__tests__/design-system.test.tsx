@@ -49,6 +49,19 @@ describe('PageHeader', () => {
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
+
+  it('title opsional -- cuma actions (tanpa judul) tetap merender actions-nya, tanpa heading', () => {
+    render(<PageHeader actions={<button>Aksi</button>} />)
+
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aksi' })).toBeInTheDocument()
+  })
+
+  it('gak merender apa-apa (null) kalau title/description/actions kosong semua', () => {
+    const { container } = render(<PageHeader />)
+
+    expect(container).toBeEmptyDOMElement()
+  })
 })
 
 describe('EmptyState', () => {

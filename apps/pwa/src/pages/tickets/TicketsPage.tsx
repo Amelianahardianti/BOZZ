@@ -18,7 +18,6 @@ import {
   ErrorState,
   LoadingState,
   Modal,
-  PageHeader,
   Pagination,
   Select,
   StatusBadge,
@@ -133,8 +132,6 @@ function MyTicketsView() {
 
   return (
     <>
-      <PageHeader title="Ticket Saya" description="Ticket packing yang ditugaskan ke kamu (FR-SI-11)." />
-
       {isLoading ? (
         <LoadingState />
       ) : loadError ? (
@@ -307,11 +304,6 @@ function OwnerTicketBoard() {
 
   return (
     <>
-      <PageHeader
-        title="Ticket Saya"
-        description='Papan pantau & assign ticket packing. Ticket baru dibuat dari halaman "Pesanan Masuk" (FR-SI-11).'
-      />
-
       <Card className="mb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <Select
