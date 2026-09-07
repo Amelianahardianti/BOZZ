@@ -196,25 +196,48 @@ export async function upsertExternalOrderRow(input: UpsertOrderInput) {
 
       await tx.external_order_items.deleteMany({ where: { external_order_id: row.id } });
       if (input.items.length) {
-        // MVP product mapping (lihat laporan audit "Order -> Ticket"): satu-
-        // satunya identifier string yang benar-benar tersedia di seluruh
-        // adapter saat ini adalah `externalItemRef` (Shopee: item_id, TikTok:
-        // line_items[].id, FakeStore/mock: productId/ref buatan) -- TIDAK ada
-        // adapter yang membawa field SKU asli terpisah. Jadi matching di sini
-        // sengaja pakai `externalItemRef` sebagai kandidat SKU, exact match
-        // SAJA (bukan fuzzy, bukan name match) terhadap `products.sku`. Kalau
-        // di masa depan ada adapter yang membawa SKU asli (mis. Shopee
-        // `model_sku`), cukup tambah field itu ke urutan pengecekan di bawah
-        // -- prioritas paling atas yang match duluan yang dipakai.
+        // MVP product mapping, Phase 1 (Task 7B, lihat laporan audit Task 7 /
+        // 7A "Product Mapping Architecture Audit"). Dua sumber, DICEK
+        // BERURUTAN, bukan digabung:
+        //
+        //   1. channel_listings (platform_id + external_item_id, UNIK per
+        //      pasangan -- lihat prisma/schema.prisma) -- platform-scoped,
+        //      jadi FakeStore id "1" tidak pernah ketuker sama TikTok id "1".
+        //      Tabel ini sudah ADA di schema sejak awal tapi TIDAK PERNAH
+        //      ditulis/dibaca siapa pun sebelum ini (audit Task 7 & 7A
+        //      membuktikan 0 baris, 0 kode) -- baru mulai DIBACA di sini,
+        //      belum ada yang MENULISNYA (itu keputusan terpisah, di luar
+        //      scope Phase 1 ini, lihat laporan Task 7B).
+        //   2. products.sku (fallback) -- mekanisme LAMA, DIPERTAHANKAN utuh
+        //      supaya demo/mekanisme yang sudah ada (mis. DEMO-001) TETAP
+        //      jalan tanpa perubahan. Global (tidak platform-aware), exact
+        //      match SAJA (bukan fuzzy, bukan name match).
+        //
+        // Kalau channel_listings ketemu TAPI product_id-nya kosong (listing
+        // ada tapi belum di-link ke produk internal manapun), tetap lanjut
+        // ke fallback SKU -- bukan berhenti di situ, karena "listing ada"
+        // bukan berarti "sudah ter-mapping".
         const itemsWithProductId = await Promise.all(
           input.items.map(async (item) => {
             const candidateSku = item.externalItemRef;
-            const product = candidateSku
-              ? await tx.products.findFirst({ where: { sku: candidateSku }, select: { id: true } })
-              : null;
+            let productId: string | null = null;
+            if (candidateSku) {
+              const listing = await tx.channel_listings.findUnique({
+                where: {
+                  platform_id_external_item_id: { platform_id: input.platformId, external_item_id: candidateSku },
+                },
+                select: { product_id: true },
+              });
+              if (listing?.product_id) {
+                productId = listing.product_id;
+              } else {
+                const product = await tx.products.findFirst({ where: { sku: candidateSku }, select: { id: true } });
+                productId = product?.id ?? null;
+              }
+            }
             return {
               external_order_id: row.id,
-              product_id: product?.id ?? null,
+              product_id: productId,
               external_item_ref: item.externalItemRef,
               item_name_snapshot: item.itemName,
               qty: item.qty,
