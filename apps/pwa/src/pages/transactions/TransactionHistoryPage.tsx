@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { fetchTransaction, fetchTransactions, type PaymentMethod, type Transaction } from '../../api/transactions'
 import { ApiRequestError } from '../../api/client'
 import { getCachedStoreSettings } from '../../shell/offline/storeSettingsCache'
-import { Card, EmptyState, ErrorState, LoadingState, PageHeader, Pagination, StatusBadge } from '../../shell/design-system'
+import { Card, EmptyState, ErrorState, LoadingState, Pagination, StatusBadge } from '../../shell/design-system'
 import { formatRupiah } from '../../shell/currency'
 import { ReceiptView, type CompletedCheckout } from '../kasir/ReceiptView'
 
@@ -84,14 +84,11 @@ export function TransactionHistoryPage() {
 
   if (viewingTransaction) {
     return (
-      <>
-        <PageHeader title="Struk Transaksi" />
-        <ReceiptView
-          checkout={transactionToCheckout(viewingTransaction)}
-          storeSettings={storeSettings}
-          onNewTransaction={() => setViewingTransaction(null)}
-        />
-      </>
+      <ReceiptView
+        checkout={transactionToCheckout(viewingTransaction)}
+        storeSettings={storeSettings}
+        onNewTransaction={() => setViewingTransaction(null)}
+      />
     )
   }
 
@@ -99,8 +96,6 @@ export function TransactionHistoryPage() {
 
   return (
     <>
-      <PageHeader title="Riwayat Transaksi" description="Daftar transaksi POS, buka ulang struknya buat dicetak lagi." />
-
       {isLoading ? (
         <LoadingState />
       ) : loadError ? (

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -83,6 +83,19 @@ function renderAt(path: string, role?: AppRole) {
   return router
 }
 
+/**
+ * Tunggu sampai routing (RequireAuth/RequireRole, redirect, dst) selesai
+ * settle di path yang diharapkan. Dulu ini dites tidak langsung lewat
+ * `findByRole('heading', ...)` (judul halaman di PageHeader konten) --
+ * sejak PageHeader per-halaman dihapus (task "Simplifikasi Header
+ * Content Page"), judul itu sudah tidak ada lagi buat sebagian rute,
+ * jadi nunggunya sekarang LANGSUNG ke sumber kebenarannya: pathname
+ * router itu sendiri.
+ */
+async function settledAt(router: ReturnType<typeof createMemoryRouter>, path: string) {
+  await waitFor(() => expect(router.state.location.pathname).toBe(path))
+}
+
 describe('routing dasar', () => {
   it('path yang gak dikenal nampilin halaman 404', () => {
     renderAt('/halaman-ngawur', 'owner')
@@ -115,15 +128,15 @@ describe('RequireAuth -- lapis pertama: harus login dulu', () => {
   })
 
   it('/login SUDAH login gak nampilin form lagi, langsung dialihkan', async () => {
-    renderAt(ROUTES.login, 'owner')
+    const router = renderAt(ROUTES.login, 'owner')
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    await settledAt(router, ROUTES.dashboard)
   })
 
   it('"/" SUDAH login (owner) diarahkan ke Dashboard', async () => {
-    renderAt('/', 'owner')
+    const router = renderAt('/', 'owner')
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    await settledAt(router, ROUTES.dashboard)
   })
 })
 
@@ -150,14 +163,13 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('Pengepak buka /kasir (bukan haknya) -> dialihkan ke /tickets (Ticket Saya)', async () => {
     const router = renderAt(ROUTES.kasir, 'pengepak')
 
-    expect(await screen.findByRole('heading', { name: 'Ticket Saya' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.tickets)
+    await settledAt(router, ROUTES.tickets)
   })
 
   it('Pengepak buka Ticket Saya -- boleh', async () => {
-    renderAt(ROUTES.tickets, 'pengepak')
+    const router = renderAt(ROUTES.tickets, 'pengepak')
 
-    expect(await screen.findByRole('heading', { name: 'Ticket Saya' })).toBeInTheDocument()
+    await settledAt(router, ROUTES.tickets)
   })
 
   it('"/" buat Kasir diarahkan ke /kasir, BUKAN /dashboard', async () => {
@@ -170,8 +182,7 @@ describe('RequireRole -- lapis kedua: role harus sesuai hak akses (SRS 2.2)', ()
   it('"/" buat Pengepak diarahkan ke /tickets, BUKAN /dashboard', async () => {
     const router = renderAt('/', 'pengepak')
 
-    await screen.findByRole('heading', { name: 'Ticket Saya' })
-    expect(router.state.location.pathname).toBe(ROUTES.tickets)
+    await settledAt(router, ROUTES.tickets)
   })
 })
 
@@ -186,8 +197,8 @@ describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
   })
 
   it('Pengepak cuma lihat menu Ticket Saya', async () => {
-    renderAt(ROUTES.tickets, 'pengepak')
-    await screen.findByRole('heading', { name: 'Ticket Saya' })
+    const router = renderAt(ROUTES.tickets, 'pengepak')
+    await settledAt(router, ROUTES.tickets)
 
     expect(screen.getAllByRole('link', { name: 'Ticket Saya' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: 'Kasir' })).not.toBeInTheDocument()
@@ -195,8 +206,8 @@ describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
   })
 
   it('Owner lihat semua menu', async () => {
-    renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    const router = renderAt(ROUTES.dashboard, 'owner')
+    await settledAt(router, ROUTES.dashboard)
 
     for (const item of NAV_ITEMS) {
       expect(screen.getAllByRole('link', { name: item.label }).length).toBeGreaterThan(0)
@@ -205,20 +216,19 @@ describe('Nav shell cuma nampilin menu sesuai hak akses role (SRS 2.2)', () => {
 
   it('klik nav link (sebagai owner) beneran pindah halaman', async () => {
     const router = renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    await settledAt(router, ROUTES.dashboard)
 
     const [ticketLink] = screen.getAllByRole('link', { name: 'Ticket Saya' })
     await userEvent.click(ticketLink)
 
-    expect(await screen.findByRole('heading', { name: 'Ticket Saya' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.tickets)
+    await settledAt(router, ROUTES.tickets)
   })
 })
 
 describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
   it('cuma ada SATU link "Pengaturan" di nav, bukan dua link terpisah', async () => {
-    renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    const router = renderAt(ROUTES.dashboard, 'owner')
+    await settledAt(router, ROUTES.dashboard)
 
     expect(screen.getAllByRole('link', { name: 'Pengaturan' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('link', { name: 'Staf' })).not.toBeInTheDocument()
@@ -228,19 +238,22 @@ describe('Pengaturan -- satu menu, dua sub-tab (Toko & Staf)', () => {
   it('/settings dialihkan ke /settings/store (tab Toko default)', async () => {
     const router = renderAt(ROUTES.settings, 'owner')
 
-    expect(await screen.findByRole('heading', { name: 'Pengaturan Toko' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.storeSettings)
+    await settledAt(router, ROUTES.storeSettings)
+    // Tab "Toko" aktif -- ini yang nunjukin sub-halaman mana yang lagi
+    // tampil (PageHeader per-halaman sudah dihapus, top header cuma
+    // nunjukin label generik "Pengaturan" buat kedua sub-tab).
+    expect(await screen.findByRole('link', { name: 'Toko' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('klik tab "Staf" pindah ke /settings/staff tanpa keluar dari Pengaturan', async () => {
     const user = userEvent.setup()
     const router = renderAt(ROUTES.settings, 'owner')
-    await screen.findByRole('heading', { name: 'Pengaturan Toko' })
+    await settledAt(router, ROUTES.storeSettings)
 
     await user.click(screen.getByRole('link', { name: 'Staf' }))
+    await settledAt(router, ROUTES.staff)
 
-    expect(await screen.findByRole('heading', { name: 'Staf' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.staff)
+    expect(await screen.findByRole('link', { name: 'Staf' })).toHaveAttribute('aria-current', 'page')
     // Tab "Toko" masih ada buat balik lagi -- bukan ilang abis pindah tab.
     expect(screen.getByRole('link', { name: 'Toko' })).toBeInTheDocument()
   })
@@ -264,8 +277,7 @@ describe('Alur "kena lempar ke login, abis login SELALU ke default role (bukan b
     await userEvent.type(screen.getByLabelText('Password'), 'owner123')
     await userEvent.click(screen.getByRole('button', { name: 'Masuk' }))
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe(ROUTES.dashboard)
+    await settledAt(router, ROUTES.dashboard)
   })
 })
 
@@ -283,8 +295,8 @@ describe('Alur "kena lempar ke login, abis login SELALU ke default role (bukan b
 // beneran mati, bukan cuma diasumsikan dari "route sudah dihapus".
 describe('Notification runtime TIDAK aktif di AppShell (di luar MVP scope)', () => {
   it('AppShell mount (rute mana pun, role mana pun) TIDAK memicu fetchNotifications() sama sekali', async () => {
-    renderAt(ROUTES.dashboard, 'owner')
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    const router = renderAt(ROUTES.dashboard, 'owner')
+    await settledAt(router, ROUTES.dashboard)
 
     expect(mockedFetchNotifications).not.toHaveBeenCalled()
   })

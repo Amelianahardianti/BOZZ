@@ -22,7 +22,6 @@ import {
   ErrorState,
   LoadingState,
   Modal,
-  PageHeader,
   Pagination,
   Select,
   StatusBadge,
@@ -360,11 +359,6 @@ export function OrdersPage() {
 
   return (
     <>
-      <PageHeader
-        title="Pesanan Masuk"
-        description="Daftar order marketplace, filter platform/status/jenis pengiriman (FR-OC-05)."
-      />
-
       <Card className="mb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <Select
